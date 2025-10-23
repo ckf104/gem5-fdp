@@ -217,3 +217,8 @@ class BaseO3CPU(BaseCPU):
     recvRespBufferSize = Param.Unsigned(
         64, "Maximum number of receive response bytes per cycle"
     )
+
+    # Decoupled front end
+    numFTQEntries = Param.Unsigned(
+        8, "Number of entries in the Fetch target queue."
+    )
