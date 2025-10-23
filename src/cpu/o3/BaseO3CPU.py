@@ -222,3 +222,16 @@ class BaseO3CPU(BaseCPU):
     numFTQEntries = Param.Unsigned(
         8, "Number of entries in the Fetch target queue."
     )
+    fetchTargetWidth = Param.Unsigned(
+        32,
+        "Max width (bytes) of Fetch target. "
+        "Determines the maximum search width per cycle",
+    )
+    minInstSize = Param.Unsigned(
+        2,
+        "Minimum instruction size (bytes). Determines the granularity "
+        "of the instruction minimum search width per cycle",
+    )
+    fetchToBacDelay = Param.Cycles(1, "Fetch to Branch address calc. delay")
+    bacToFetchDelay = Param.Cycles(1, "Branch address calc. to fetch delay")
+    decoupledFrontEnd = Param.Bool(False, "Enables the decoupled front-end")

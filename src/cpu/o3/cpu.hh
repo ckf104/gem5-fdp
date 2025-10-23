@@ -57,6 +57,7 @@
 #include "cpu/o3/dyn_inst_ptr.hh"
 #include "cpu/o3/fetch.hh"
 #include "cpu/o3/free_list.hh"
+#include "cpu/o3/ftq.hh"
 #include "cpu/o3/iew.hh"
 #include "cpu/o3/limits.hh"
 #include "cpu/o3/rename.hh"
@@ -283,6 +284,9 @@ class CPU : public BaseCPU
     /** Get the current instruction sequence number, and increment it. */
     InstSeqNum getAndIncrementInstSeq() { return globalSeqNum++; }
 
+    /** Get the current fetch target sequence number, and increment it. */
+    FTSeqNum getAndIncrementFTSeq() { return globalFTSeqNum++; }
+
     /** Traps to handle given fault. */
     void trap(const Fault &fault, ThreadID tid, const StaticInstPtr &inst);
 
@@ -453,6 +457,7 @@ class CPU : public BaseCPU
      */
     enum StageIdx
     {
+        BACIdx,
         FetchIdx,
         DecodeIdx,
         RenameIdx,
@@ -519,6 +524,9 @@ class CPU : public BaseCPU
 
     /** The global sequence number counter. */
     InstSeqNum globalSeqNum;//[MaxThreads];
+
+    /** The global sequence number counter. */
+    FTSeqNum globalFTSeqNum;//[MaxThreads];
 
     /** Pointer to the checker, which can dynamically verify
      * instruction results at run time.  This can be set to NULL if it
