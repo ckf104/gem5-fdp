@@ -67,7 +67,6 @@ BAC::BAC(CPU *_cpu, const BaseO3CPUParams &params)
       bpu(params.branchPred),
       ftq(nullptr),
       wroteToTimeBuffer(false),
-      decoupledFrontEnd(params.decoupledFrontEnd),
       fetchToBacDelay(params.fetchToBacDelay),
       decodeToFetchDelay(params.decodeToFetchDelay),
       commitToFetchDelay(params.commitToFetchDelay),
@@ -77,7 +76,7 @@ BAC::BAC(CPU *_cpu, const BaseO3CPUParams &params)
       numThreads(params.numThreads),
       stats(_cpu,this)
 {
-    fatal_if(decoupledFrontEnd && (fetchTargetWidth < params.fetchBufferSize),
+    fatal_if((fetchTargetWidth < params.fetchBufferSize),
             "Fetch target width should be larger than fetch buffer size!");
 
     for (int i = 0; i < MaxThreads; i++) {
@@ -467,8 +466,6 @@ BAC::checkSignalsAndUpdate(ThreadID tid)
 void
 BAC::squashBpuHistories(ThreadID tid)
 {
-    if (!decoupledFrontEnd) return;
-
     DPRINTF(BAC, "%s(tid:%i): FTQ sz: %i\n", tid, __func__, ftq->size(tid));
 
     unsigned n_fts = ftq->size(tid);
@@ -492,8 +489,6 @@ BAC::squashBpuHistories(ThreadID tid)
 void
 BAC::squash(const PCStateBase &new_pc, ThreadID tid)
 {
-    if (!decoupledFrontEnd) return;
-
     DPRINTF(BAC, "[tid:%i] Squashing FTQ.\n", tid);
 
     // Set status to squashing.
@@ -516,7 +511,6 @@ BAC::tick()
     std::list<ThreadID>::iterator threads = activeThreads->begin();
     std::list<ThreadID>::iterator end = activeThreads->end();
 
-if (decoupledFrontEnd) {
     // FDP ---------------------------------------------
     // In the decoupled frontend the BAC stage is active as all
     // others. Its main purpose is generate fetch targets by using
@@ -535,24 +529,6 @@ if (decoupledFrontEnd) {
         }
         profileCycle(tid);
     }
-
-} else {
-    // No FDP -------------------------------------------
-    // In the non-decoupled frontend the BAC stage is passive and
-    // only manages the branch prediction unit.
-    // It is always idle.
-
-    while (threads != end) {
-        ThreadID tid = *threads++;
-
-        // Update only the branch prediction signals.
-        checkAndUpdateBPUSignals(tid);
-        if (bacStatus[tid] != Idle) {
-            bacStatus[tid] = Idle;
-            status_change = true;
-        }
-    }
-} // ----------------------------------------------------
 
     if (status_change) {
         updateBACStatus();
@@ -917,17 +893,13 @@ BAC::updatePC(const DynInstPtr &inst,
     if (inst->isControl()) {
         // The instruction is a control instruction.
 
-        if (decoupledFrontEnd) {
+        // if (decoupledFrontEnd) {
+        if (true) {
             // With a decoupled front-end the branch prediction was done
             // while creating the fetch target. Now update the prediction
             // with the information from the predecoding.
             predict_taken = updatePreDecode(tid, inst->seqNum,
                                             inst->staticInst, fetch_pc, ft);
-        } else {
-            // With a coupled front-end we need to make the branch prediction
-            // here.
-            predict_taken = bpu->predict(inst->staticInst, inst->seqNum,
-                                         fetch_pc, tid);
         }
 
         DPRINTF(BAC, "[tid:%i] [sn:%llu] Branch at PC %#x "
@@ -954,7 +926,8 @@ BAC::updatePC(const DynInstPtr &inst,
     }
 
 
-    if (decoupledFrontEnd) {
+    // if (decoupledFrontEnd) {
+    if (true) {
 
         // For the decoupled front-end we need to check if this instruction
         // is the exit instruction of the fetch target. It does not need

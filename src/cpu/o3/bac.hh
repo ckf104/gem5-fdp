@@ -362,7 +362,8 @@ class BAC
     TimeBuffer<TimeStruct>::wire fromCommit;
 
     /** Wire used to write any information heading to fetch. */
-    TimeBuffer<FetchStruct>::wire toFetch;
+    // 有什么东西需要发往 fetch 吗?
+    // TimeBuffer<FetchStruct>::wire toFetch;
 
     /** The decoupled PC which runs ahead of fetch */
     std::unique_ptr<PCStateBase> bacPC[MaxThreads];
@@ -385,7 +386,7 @@ class BAC
     Stalls stalls[MaxThreads];
 
     /** Enables the decoupled front-end */
-    const bool decoupledFrontEnd;
+    // const bool decoupledFrontEnd;
 
     /** Fetch to BAC delay. */
     const Cycles fetchToBacDelay;
