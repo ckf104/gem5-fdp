@@ -51,6 +51,7 @@
 
 #include "arch/generic/pcstate.hh"
 #include "base/statistics.hh"
+#include "cpu/o3/bac.hh"
 #include "cpu/o3/comm.hh"
 #include "cpu/o3/commit.hh"
 #include "cpu/o3/decode.hh"
@@ -405,6 +406,12 @@ class CPU : public BaseCPU
     bool removeInstsThisCycle;
 
   protected:
+    /** The branch and PC address calculation stage. */
+    BAC bac;
+
+    /** The Fetch taget queue. */
+    FTQ ftq;
+
     /** The fetch stage. */
     Fetch fetch;
 
