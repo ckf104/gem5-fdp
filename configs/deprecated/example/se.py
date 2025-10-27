@@ -220,6 +220,7 @@ if args.elastic_trace_en:
 # frequency.
 for cpu in system.cpu:
     cpu.clk_domain = system.cpu_clk_domain
+    cpu.fetchBufferSize = 16
 
 if ObjectList.is_kvm_cpu(CPUClass) or ObjectList.is_kvm_cpu(FutureClass):
     if buildEnv["USE_X86_ISA"]:
@@ -255,6 +256,9 @@ for i in range(np):
     if args.bp_type:
         bpClass = ObjectList.bp_list.get(args.bp_type)
         system.cpu[i].branchPred = bpClass()
+        cpu.branchPred.instShiftAmt = 1
+        cpu.branchPred.requiresBTBHit = True
+        cpu.branchPred.tage.pathHistBits = 0
 
     if args.indirect_bp_type:
         indirectBPClass = ObjectList.indirect_bp_list.get(
