@@ -98,6 +98,8 @@ class BranchTargetBuffer : public ClockedObject
                           BranchType type = BranchType::NoBranch,
                           StaticInstPtr inst = nullptr) = 0;
 
+    virtual bool removeBTBEntry(ThreadID tid, Addr instPC) = 0;
+
     /** Update BTB statistics
      */
     virtual void incorrectTarget(Addr inst_pc,

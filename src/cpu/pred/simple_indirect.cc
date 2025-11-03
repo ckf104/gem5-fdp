@@ -171,6 +171,28 @@ SimpleIndirectPredictor::lookup(ThreadID tid, Addr br_addr,
     return history->hit;
 }
 
+const PCStateBase*
+SimpleIndirectPredictor::lookup(ThreadID tid, InstSeqNum sn, Addr pc)
+{
+    auto set_index = getSetIndex(pc, tid);
+    auto tag = getTag(pc);
+    stats.lookups++;
+
+    const auto &iset = targetCache[set_index];
+    for (auto way = iset.begin(); way != iset.end(); ++way) {
+        // tag may be 0 and match the default in way->tag, so we also have to
+        // check that way->target has been initialized.
+        if (way->tag == tag && way->target) {
+            DPRINTF(Indirect, "Hit %x (target:%s)\n", pc, *way->target);
+            stats.hits++;
+            return way->target.get();
+        }
+    }
+    DPRINTF(Indirect, "Miss %x\n", pc);
+    stats.misses++;
+    return nullptr;
+}
+
 
 void
 SimpleIndirectPredictor::commit(ThreadID tid, InstSeqNum sn, void * &i_history)

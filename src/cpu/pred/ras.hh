@@ -170,6 +170,11 @@ class ReturnAddrStack : public SimObject
      */
     void squash(ThreadID tid, void * &ras_history);
 
+    const PCStateBase* topEntry(ThreadID tid)
+    {
+        return addrStacks[tid].top();
+    }
+
     /**
      * A branch got finally got finally commited.
      * @param misp Whether the branch was mispredicted.
