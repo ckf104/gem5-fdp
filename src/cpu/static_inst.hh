@@ -318,11 +318,14 @@ class StaticInst : public RefCounted, public StaticInstFlags
 
     size_t size() const
     {
-        if (_size == 0) fatal(
+        if (_size == 0)
+        {
+            fatal(
             "Instruction size for this instruction not set! It's size is "
             "required for the decoupled front-end. Either use the standard "
             "front-end or this ISA needs to be extended with the instruction "
             "size. Refer to the X86, Arm or RiscV decoders for an example.");
+        }
         return _size;
     }
     virtual void size(size_t newSize) { _size = newSize; }

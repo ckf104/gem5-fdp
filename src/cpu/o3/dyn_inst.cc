@@ -198,6 +198,9 @@ DynInst::operator delete(void *ptr)
 
 DynInst::~DynInst()
 {
+    // 在指令析构时 tmp bp history 已经提交或者 squash 了
+    assert(tmpBPHistory[0] == nullptr);
+    assert(tmpBPHistory[1] == nullptr);
     /*
      * The buffer this DynInst occupies also holds some of the structures it
      * points to. We need to call their destructors manually to make sure that

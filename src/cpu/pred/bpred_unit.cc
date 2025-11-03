@@ -47,7 +47,9 @@
 #include "arch/generic/pcstate.hh"
 #include "base/compiler.hh"
 #include "base/trace.hh"
+#include "cpu/pred/branch_type.hh"
 #include "debug/Branch.hh"
+#include "enums/BranchType.hh"
 
 namespace gem5
 {
@@ -107,7 +109,7 @@ BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
 {
     /** Perform the prediction. */
     PredictorHistory* bpu_history = nullptr;
-    bool taken  = predict(inst, seqNum, pc, tid, bpu_history);
+    bool taken = predict(inst, seqNum, pc, tid, bpu_history);
 
     assert(bpu_history!=nullptr);
 
@@ -136,7 +138,8 @@ BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
     // if prediction was wrong.
 
     BranchType brType = getBranchType(inst);
-    hist = new PredictorHistory(tid, seqNum, pc.instAddr(), inst);
+    ++maxHistId;
+    hist = new PredictorHistory(tid, seqNum, pc.instAddr(), maxHistId, inst);
 
     stats.lookups[tid][brType]++;
     ppBranches->notify(1);
@@ -219,6 +222,9 @@ BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
             // In case of a call build the return address and
             // push it to the RAS.
             auto return_addr = inst->buildRetPC(pc, pc);
+            // 如果我们在 fetch 阶段预测时不再使用指令信息，传入的 pc
+            // 不包含正确的 npc，buildRetPC 函数就无法得到正确的 return address
+            return_addr->set(pc.instAddr() + inst->size());
             ras->push(tid, *return_addr, hist->rasHistory);
 
             DPRINTF(Branch, "[tid:%i] [sn:%llu] Instr. %s was "
@@ -397,6 +403,9 @@ BPredUnit::commitBranch(ThreadID tid, PredictorHistory* &hist)
                          hist->type,
                          hist->rasHistory);
     }
+    // 确保 history 是按最旧到最新的顺序 commit 的
+    ++minHistId;
+    assert(hist->hist_id == minHistId);
 }
 
 
@@ -424,7 +433,6 @@ BPredUnit::squash(const InstSeqNum &squashed_sn, ThreadID tid)
 void
 BPredUnit::squashHistory(ThreadID tid, PredictorHistory* &history)
 {
-
     stats.squashes[tid][history->type]++;
     DPRINTF(Branch, "[tid:%i] [squash sn:%llu] Incorrect: %s\n",
                 tid, history->seqNum,
@@ -448,7 +456,9 @@ BPredUnit::squashHistory(ThreadID tid, PredictorHistory* &history)
 
     // This call should delete the bpHistory.
     squash(tid, history->bpHistory);
-
+    // 确保 history 是按最新到最旧的顺序 squash 的
+    assert(history->hist_id == maxHistId);
+    maxHistId--;
     delete history;
     history = nullptr;
 }
@@ -492,6 +502,8 @@ BPredUnit::squash(const InstSeqNum &squashed_sn,
     if (!pred_hist.empty()) {
 
         PredictorHistory* const hist = pred_hist.front();
+        assert(hist->seqNum == squashed_sn);
+        assert(hist->hist_id == maxHistId);
 
         DPRINTF(Branch, "[tid:%i] [squash sn:%llu] Mispredicted: %s, PC:%#x\n",
                     tid, squashed_sn, toString(hist->type), hist->pc);
@@ -609,6 +621,53 @@ BPredUnit::squash(const InstSeqNum &squashed_sn,
         DPRINTF(Branch, "[tid:%i] [sn:%llu] pred_hist empty, can't "
                 "update\n", tid, squashed_sn);
     }
+}
+
+bool
+BPredUnit::btbFixFromDecode(const StaticInstPtr &inst,
+    const InstSeqNum &seqNum, const PCStateBase &taken_target,
+    const Addr fetch_pc, ThreadID tid)
+{
+    auto inst_size = inst->size();
+    auto br_type = getBranchType(inst);
+    Addr pc = fetch_pc;
+    assert(inst_size == 4 || inst_size == 2);
+    bool fixed = false;
+
+    // 非压缩指令先移除 pc + 2 位置的 invalid entry
+    if (inst_size == 4)
+    {
+        auto btb_inst = btb->getInst(tid, pc + 2);
+        fixed |= !btb_inst;
+        // 未压缩指令的 btb entry 放在 pc + 2 的位置
+        if (btb_inst)
+        {
+            auto removed = btb->removeBTBEntry(tid, pc + 2);
+            assert(removed);
+        }
+    }
+    auto btb_inst = btb->getInst(tid, pc);
+    fixed |= btb_inst != inst;
+    assert(fixed || inst->isDirectCtrl());
+
+    auto* btb_target = btb->lookup(tid, pc, br_type);
+    if (btb_target)
+    {
+        fixed |= btb_target->instAddr() != taken_target.instAddr();
+    }
+    // 如果 inst 是分支指令，那么更新 btb
+    if (br_type != enums::NoBranch)
+    {
+        btb->update(tid, pc, taken_target, br_type, inst);
+    }
+    // 否则将 invalid btb entry 移除，必定有 invalid entry
+    // 否则不会触发 squash
+    else
+    {
+        auto removed = btb->removeBTBEntry(tid, pc);
+        assert(removed);
+    }
+    return fixed;
 }
 
 

@@ -42,6 +42,7 @@
 #include "cpu/o3/fetch.hh"
 
 #include <algorithm>
+#include <cassert>
 #include <cstring>
 #include <list>
 #include <map>
@@ -55,11 +56,16 @@
 #include "cpu/o3/cpu.hh"
 #include "cpu/o3/dyn_inst.hh"
 #include "cpu/o3/limits.hh"
+#include "cpu/pred/bpred_unit.hh"
+#include "cpu/pred/branch_type.hh"
 #include "debug/Activity.hh"
 #include "debug/Drain.hh"
 #include "debug/Fetch.hh"
+#include "debug/FetchPredict.hh"
 #include "debug/O3CPU.hh"
 #include "debug/O3PipeView.hh"
+#include "debug/Squash.hh"
+#include "enums/BranchType.hh"
 #include "mem/packet.hh"
 #include "params/BaseO3CPU.hh"
 #include "sim/byteswap.hh"
@@ -68,6 +74,7 @@
 #include "sim/full_system.hh"
 #include "sim/system.hh"
 
+using namespace gem5::branch_prediction;
 namespace gem5
 {
 
@@ -533,6 +540,105 @@ Fetch::lookupAndUpdateNextPC(const DynInstPtr &inst, PCStateBase &next_pc)
 }
 
 bool
+Fetch::predictNextPC(DynInstPtr& dynInst, PCStateBase &next_pc)
+{
+    ThreadID tid = dynInst->threadNumber;
+
+    // 首先获取实际的预测 pc, 这个预测不改变分支预测器内部的状态
+    // 有可能之前错误的 btb 已经将分支预测器修改为错误的状态，导
+    // 致这里的预测也不对，但 decode 阶段将检测到错误的 btb，然
+    // 后 flush 流水线
+    bool hit = false;
+    if (dynInst->staticInst->isReturn())
+    {
+        auto* ras_predict = branchPred->ras->topEntry(tid);
+        if (ras_predict)
+        {
+            dynInst->setPredTarg(*ras_predict);
+            hit = true;
+            DPRINTF(FetchPredict, "[tid:%i] [sn:%llu] at PC %#x "
+                "predicted to go to %s from RAS\n",
+                tid, dynInst->seqNum, dynInst->pcState().instAddr(),
+                *ras_predict);
+        }
+    }
+    else if (dynInst->staticInst->isIndirectCtrl())
+    {
+        // RISC-V 中没有条件间接跳转指令
+        assert(dynInst->staticInst->isUncondCtrl());
+        auto ipred_target = branchPred->iPred->lookup(tid,
+            dynInst->seqNum, dynInst->pcState().instAddr());
+        if (ipred_target)
+        {
+            dynInst->setPredTarg(*ipred_target);
+            hit = true;
+            DPRINTF(FetchPredict, "[tid:%i] [sn:%llu] at PC %#x "
+                "predicted to go to %s from iPred\n",
+                tid, dynInst->seqNum, dynInst->pcState().instAddr(),
+                *ipred_target);
+        }
+        else
+        {
+            auto btb_target = branchPred->btb->lookup(tid,
+                dynInst->pcState().instAddr());
+            if (btb_target)
+            {
+                dynInst->setPredTarg(*btb_target);
+                hit = true;
+                DPRINTF(FetchPredict, "[tid:%i] [sn:%llu] at PC %#x "
+                    "predicted to go to %s from BTB\n",
+                    tid, dynInst->seqNum, dynInst->pcState().instAddr(),
+                    *btb_target);
+            }
+        }
+    }
+    // 如果没有命中或者 inst 不是 indirect jump 或者 return 指令
+    if (!hit)
+    {
+        dynInst->setPredTarg(dynInst->pcState());
+        dynInst->staticInst->advancePC(*dynInst->predPC);
+    }
+
+    // 不依赖指令信息预测 pc，这个预测会改变分支预测器内部状态
+    bool compressed = dynInst->staticInst->size() == 2;
+    bool pred_taken = false;
+    auto inst = branchPred->BTBGetInst(tid, dynInst->pcState().instAddr());
+    Addr pc_addr = next_pc.instAddr();
+
+    if (inst)
+    {
+        auto br_type = getBranchType(inst);
+        assert(br_type != enums::NoBranch);
+        BPredUnit::PredictorHistory* bp_history = nullptr;
+        pred_taken = branchPred->predict(inst, dynInst->seqNum,
+            next_pc, tid, bp_history);
+        dynInst->tmpBPHistory[0] = bp_history;
+
+        if (!pred_taken && !compressed)
+        {
+            next_pc.set(pc_addr + 2);
+            bp_history = nullptr;
+            inst = branchPred->BTBGetInst(tid, next_pc.instAddr());
+            if (inst)
+            {
+                br_type = getBranchType(inst);
+                assert(br_type != enums::NoBranch);
+                pred_taken = branchPred->predict(inst, dynInst->seqNum,
+                    next_pc, tid, bp_history);
+                dynInst->tmpBPHistory[1] = bp_history;
+            }
+        }
+    }
+    if (!pred_taken)
+    {
+        set(next_pc, dynInst->pcState());
+        dynInst->staticInst->advancePC(next_pc);
+    }
+
+    return pred_taken;
+}
+
+bool
 Fetch::fetchCacheLine(Addr vaddr, ThreadID tid, Addr pc)
 {
     Fault fault = NoFault;
@@ -927,9 +1033,18 @@ Fetch::checkSignalsAndUpdate(ThreadID tid)
 
     // Check squash signals from commit.
     if (fromCommit->commitInfo[tid].squash) {
-
-        DPRINTF(Fetch, "[tid:%i] Squashing instructions due to squash "
-                "from commit.\n",tid);
+        // 仅关心 mispredict squash 相关的数据
+        if (fromCommit->commitInfo[tid].mispredictInst.get())
+        {
+            auto& mispred_inst = fromCommit->commitInfo[tid].mispredictInst;
+            DPRINTF(Squash, "[tid:%i] Squashing instructions from commit, "
+                "pc=0x%x, sn=%llu, inst %s, new pc=0x%x\n",tid,
+                mispred_inst->pcState().instAddr(),
+                fromCommit->commitInfo[tid].doneSeqNum,
+                mispred_inst->staticInst->getName(),
+                fromCommit->commitInfo[tid].pc->instAddr());
+        }
+        cpu->clearTmpBPHistory(fromCommit->commitInfo[tid].doneSeqNum, tid);
         // In any case, squash.
         squash(*fromCommit->commitInfo[tid].pc,
                fromCommit->commitInfo[tid].doneSeqNum,
@@ -957,17 +1072,32 @@ Fetch::checkSignalsAndUpdate(ThreadID tid)
 
     // Check squash signals from decode.
     if (fromDecode->decodeInfo[tid].squash) {
-        DPRINTF(Fetch, "[tid:%i] Squashing instructions due to squash "
-                "from decode.\n",tid);
-
-        // Update the branch predictor.
-        if (fromDecode->decodeInfo[tid].branchMispredict) {
-            branchPred->squash(fromDecode->decodeInfo[tid].doneSeqNum,
-                    *fromDecode->decodeInfo[tid].nextPC,
-                    fromDecode->decodeInfo[tid].branchTaken, tid);
-        } else {
-            branchPred->squash(fromDecode->decodeInfo[tid].doneSeqNum,
-                              tid);
+        DPRINTF(Squash, "[tid:%i] Squashing instructions from decode, "
+            "pc=0x%x, sn=%llu, inst %s, new pc=0x%x\n",tid,
+            fromDecode->decodeInfo[tid].mispredictInst->pcState().instAddr(),
+            fromDecode->decodeInfo[tid].doneSeqNum,
+            fromDecode->decodeInfo[tid].mispredictInst->staticInst->getName(),
+            fromDecode->decodeInfo[tid].nextPC->instAddr());
+        // 目前的 decode 代码中 squash 信号只会在分支预测错误(btb miss)时发出
+        assert(fromDecode->decodeInfo[tid].branchMispredict);
+        // 在 decode squash 传递给 fetch 阶段时又可能产生了新的 tmpBPHistory
+        // 将它们 clear 掉
+        cpu->clearTmpBPHistory(fromDecode->decodeInfo[tid].doneSeqNum, tid);
+        // 如果 squash inst 是分支指令的话，那它应该在栈顶
+        // 否则，栈顶一定是比它更老的指令
+        if (!branchPred->predHist[tid].empty())
+        {
+            auto top_seq = branchPred->predHist[tid].front()->seqNum;
+            auto& squash_inst = fromDecode->decodeInfo[tid].squashInst;
+            auto br_type = getBranchType(squash_inst->staticInst);
+            if (br_type == enums::NoBranch)
+            {
+                assert(top_seq < squash_inst->seqNum);
+            }
+            else
+            {
+                assert(top_seq == squash_inst->seqNum);
+            }
         }
 
         if (fetchStatus[tid] != Squashing) {
@@ -1186,6 +1316,8 @@ Fetch::fetch(bool &status_change)
         fetchAddr = (this_pc.instAddr() + pcOffset) & pc_mask;
         Addr fetchBufferBlockPC = fetchBufferAlignPC(fetchAddr);
 
+        // RISC-V 中没有 ROM upc
+        assert(!inRom);
         if (needMem) {
             // If buffer is no longer valid or fetchAddr has moved to point
             // to the next cache block then start fetch from icache.
@@ -1244,6 +1376,14 @@ Fetch::fetch(bool &status_change)
                 }
                 newMacro |= staticInst->isLastMicroop();
             }
+            assert(staticInst->size() == 2 || staticInst->size() == 4);
+
+            if (staticInst->isControl())
+            {
+                // 我们目前只考虑一条 macro 指令中仅可能最后一条 micro 指令是 branch
+                // 的情况
+                assert(!curMacroop || staticInst->isLastMicroop());
+            }
 
             DynInstPtr instruction = buildInst(
                     tid, staticInst, curMacroop, this_pc, *next_pc, true);
@@ -1257,12 +1397,29 @@ Fetch::fetch(bool &status_change)
             }
 #endif
 
-            set(next_pc, this_pc);
-
             // If we're branching after this instruction, quit fetching
             // from the same block.
-            predictedBranch |= this_pc.branching();
-            predictedBranch |= lookupAndUpdateNextPC(instruction, *next_pc);
+            // predictedBranch |= this_pc.branching();
+            // RISC-V 中译码时不会马上得到 branching 信息
+            assert(!this_pc.branching());
+            // 对最后一条指令的 pc 进行分支预测，预测的 branch history 临时
+            // 存放在 DynInst::tmpBPHistory 中。在拿到指令时才实际预测会与
+            // 真实处理器的情况有些偏差：对于跨 fetch buffer 的 4 bytes
+            // 指令，我们会先拿到它的前 2 bytes，真实处理器会先使用 btb 信息进
+            // 行分支预测，而这里会等拿到后 2 bytes 后再做分支预测
+            assert(!predictedBranch);
+            set(next_pc, this_pc);
+            if (!curMacroop || staticInst->isLastMicroop())
+            {
+                predictedBranch = predictNextPC(instruction, *next_pc);
+            }
+            else
+            {
+                staticInst->advancePC(*next_pc);
+                instruction->setPredTarg(*next_pc);
+                instruction->setPredTaken(false);
+            }
+            // predictedBranch |= lookupAndUpdateNextPC(instruction, *next_pc);
             if (predictedBranch) {
                 DPRINTF(Fetch, "Branch detected with PC = %s\n", this_pc);
             }

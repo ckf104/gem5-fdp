@@ -288,6 +288,8 @@ class Fetch
      */
     bool lookupAndUpdateNextPC(const DynInstPtr &inst, PCStateBase &pc);
 
+    bool predictNextPC(DynInstPtr& dynInst, PCStateBase &next_pc);
+
     /**
      * Fetches the cache line that contains the fetch PC.  Returns any
      * fault that happened.  Puts the data into the class variable

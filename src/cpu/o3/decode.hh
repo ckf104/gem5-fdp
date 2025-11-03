@@ -51,6 +51,12 @@
 
 namespace gem5
 {
+class PCStateBase;
+
+namespace branch_prediction
+{
+  class BPredUnit;
+}
 
 struct BaseO3CPUParams;
 
@@ -150,6 +156,12 @@ class Decode
      */
     void decodeInsts(ThreadID tid);
 
+    /** 返回值表示 btb 是否预测正确， taken_target 保存了 pc 相对跳转的指令的
+     * 跳转目标
+     */
+    bool checkInstBP(const DynInstPtr& inst, PCStateBase& taken_target);
+    void pushTmpHistoryToBP(const DynInstPtr& inst);
+
   private:
     /** Inserts a thread's instructions into the skid buffer, to be decoded
      * once decode unblocks.
@@ -206,6 +218,10 @@ class Decode
     // Interfaces to objects outside of decode.
     /** CPU interface. */
     CPU *cpu;
+
+    // 我们在 decode 阶段才将 predictor history 插入到
+    // branch predictor 中
+    branch_prediction::BPredUnit* branchPred;
 
     /** Time buffer interface. */
     TimeBuffer<TimeStruct> *timeBuffer;

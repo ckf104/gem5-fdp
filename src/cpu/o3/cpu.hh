@@ -73,6 +73,11 @@
 namespace gem5
 {
 
+namespace branch_prediction
+{
+  class BPredUnit;
+}
+
 template <class>
 class Checker;
 class ThreadContext;
@@ -365,6 +370,9 @@ class CPU : public BaseCPU
     /** Remove all instructions younger than the given sequence number. */
     void removeInstsUntil(const InstSeqNum &seq_num, ThreadID tid);
 
+    /** 移除所有的 tmp history, 包括 seq_num 处的指令 */
+    void clearTmpBPHistory(const InstSeqNum &seq_num, ThreadID tid);
+
     /** Removes the instruction pointed to by the iterator. */
     void squashInstIt(const ListIt &instIt, ThreadID tid);
 
@@ -401,6 +409,9 @@ class CPU : public BaseCPU
     bool removeInstsThisCycle;
 
   protected:
+    /** BPredUnit. */
+    branch_prediction::BPredUnit *branchPred;
+
     /** The fetch stage. */
     Fetch fetch;
 

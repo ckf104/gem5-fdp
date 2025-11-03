@@ -71,6 +71,8 @@ class Packet;
 
 namespace o3
 {
+// RISC-V 最长的指令（4Bytes）的大小是最短指令（2Bytes）的2倍
+constexpr int maxBPHistoryOneInst = 2;
 
 class DynInst : public ExecContext, public RefCounted
 {
@@ -125,6 +127,11 @@ class DynInst : public ExecContext, public RefCounted
 
     /** The StaticInst used by this BaseDynInst. */
     const StaticInstPtr staticInst;
+
+    /** 在看见实际指令之前做的分支预测，在 decode 阶段才会将这些
+     * BPHistory 放到 BPredUnit::predHist 中
+     */
+    void* tmpBPHistory[2] = {nullptr, nullptr};
 
     /** Pointer to the Impl's CPU object. */
     CPU *cpu = nullptr;
