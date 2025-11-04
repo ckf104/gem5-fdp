@@ -643,6 +643,7 @@ Decode::pushTmpHistoryToBP(const DynInstPtr& dynInst)
     if (bp_history)
     {
         assert(br_type != enums::NoBranch);
+        assert(bp_history->btbHit);
         auto& hist_queue = branchPred->predHist[dynInst->threadNumber];
         if (!hist_queue.empty())
         {
@@ -857,6 +858,9 @@ Decode::decodeInsts(ThreadID tid)
             {
                 taken = branchPred->predict(inst->staticInst, inst->seqNum,
                     *predict_pc, tid);
+                auto* hist = branchPred->predHist[tid].front();
+                assert(hist->btbHit);
+                hist->btbHit = false;
             }
             if (taken)
             {
