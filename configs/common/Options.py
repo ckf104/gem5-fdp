@@ -284,6 +284,24 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         help="Number of instructions decoded per cycle",
     )
     parser.add_argument(
+        "--btbNumEntries",
+        default=4096,
+        type=int,
+        help="Num entries in BTB",
+    )
+    parser.add_argument(
+        "--btbAssociativity",
+        default=1,
+        type=int,
+        help="Associativity of the BTB",
+    )
+    parser.add_argument(
+        "--btbTagBits",
+        default=64,
+        type=int,
+        help="Number of bits in the BTB tag",
+    )
+    parser.add_argument(
         "--list-bp-types",
         action=ListBp,
         nargs=0,
