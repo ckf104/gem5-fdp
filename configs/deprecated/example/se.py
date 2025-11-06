@@ -262,6 +262,9 @@ for i in range(np):
         cpu.branchPred.instShiftAmt = 1
         cpu.branchPred.requiresBTBHit = True
         cpu.branchPred.tage.pathHistBits = 0
+        cpu.branchPred.btb.numEntries = args.btbNumEntries
+        cpu.branchPred.btb.associativity = args.btbAssociativity
+        cpu.branchPred.btb.tagBits = args.btbTagBits
 
     if args.indirect_bp_type:
         indirectBPClass = ObjectList.indirect_bp_list.get(

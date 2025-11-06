@@ -108,11 +108,13 @@ class BTBSetAssociative(BTBIndexingPolicy):
     )
 
     # Set shift for the index. Ignore lower 2 bits for a 4 byte instruction.
-    set_shift = Param.Unsigned(2, "Number of bits to shift PC to get index")
+    set_shift = Param.Unsigned(
+        Parent.instShiftAmt, "Number of bits to shift PC to get index"
+    )
 
     # Total number of bits in the tag.
     # This is above the index and offset bit
-    tag_bits = Param.Unsigned(64, "number of bits in the tag")
+    tag_bits = Param.Unsigned(Parent.tagBits, "number of bits in the tag")
 
     # Number of threads sharing the BTB
     numThreads = Param.Unsigned(Parent.numThreads, "Number of threads")
