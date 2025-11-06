@@ -266,6 +266,24 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         help="type of cpu to run with",
     )
     parser.add_argument(
+        "--fetchToDecodeDelay",
+        default=1,
+        type=int,
+        help="Number of cycles between fetch and decode",
+    )
+    parser.add_argument(
+        "--fetchWidth",
+        default=8,
+        type=int,
+        help="Number of instructions fetched per cycle",
+    )
+    parser.add_argument(
+        "--decodeWidth",
+        default=8,
+        type=int,
+        help="Number of instructions decoded per cycle",
+    )
+    parser.add_argument(
         "--list-bp-types",
         action=ListBp,
         nargs=0,

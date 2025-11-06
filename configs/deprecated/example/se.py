@@ -221,6 +221,9 @@ if args.elastic_trace_en:
 for cpu in system.cpu:
     cpu.clk_domain = system.cpu_clk_domain
     cpu.fetchBufferSize = 16
+    cpu.fetchToDecodeDelay = args.fetchToDecodeDelay
+    cpu.fetchWidth = args.fetchWidth
+    cpu.decodeWidth = args.decodeWidth
 
 if ObjectList.is_kvm_cpu(CPUClass) or ObjectList.is_kvm_cpu(FutureClass):
     if buildEnv["USE_X86_ISA"]:
