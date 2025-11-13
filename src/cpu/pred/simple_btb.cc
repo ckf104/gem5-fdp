@@ -126,8 +126,12 @@ SimpleBTB::update(ThreadID tid, Addr instPC,
 bool SimpleBTB::removeBTBEntry(ThreadID tid, Addr instPC)
 {
     BTBEntry *entry = btb.findEntry({instPC, tid});
-    bool valid = entry->isValid();
-    entry->invalidate();
+    bool valid = false;
+    if (entry)
+    {
+        valid = entry->isValid();
+        entry->invalidate();
+    }
 
     return valid;
 }

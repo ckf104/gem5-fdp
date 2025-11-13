@@ -120,8 +120,89 @@ BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
     return taken;
 }
 
+void
+BPredUnit::lookupIndirect(const StaticInstPtr &inst, const InstSeqNum &seqNum,
+                            PCStateBase &pc, ThreadID tid)
+{
+    bool hit = false;
+    if (inst->isReturn())
+    {
+        auto* ras_predict = ras->topEntry(tid);
+        if (ras_predict)
+        {
+            set(pc, *ras_predict);
+            hit = true;
+        }
+    }
+    else if (inst->isIndirectCtrl())
+    {
+        // RISC-V 中没有条件间接跳转指令
+        assert(inst->isUncondCtrl());
+        auto ipred_target = iPred->lookup(tid, seqNum, pc.instAddr());
+        if (ipred_target)
+        {
+            set(pc, *ipred_target);
+            hit = true;
+        }
+        else
+        {
+            auto btb_target = btb->lookup(tid, pc.instAddr());
+            if (btb_target)
+            {
+                set(pc, *btb_target);
+                hit = true;
+            }
+        }
+    }
+    // 如果没有命中或者 inst 不是 indirect jump 或者 return 指令
+    if (!hit)
+    {
+        inst->advancePC(pc);
+    }
+}
 
+bool
+BPredUnit::btbFixFromDecode(const StaticInstPtr &inst,
+    const InstSeqNum &seqNum, const PCStateBase &taken_target,
+    const Addr fetch_pc, ThreadID tid)
+{
+    auto inst_size = inst->size();
+    auto br_type = getBranchType(inst);
+    Addr pc = fetch_pc;
+    assert(inst_size == 4 || inst_size == 2);
+    bool fixed = false;
 
+    // 非压缩指令先移除 pc + 2 位置的 invalid entry
+    if (inst_size == 4)
+    {
+        auto removed = btb->removeBTBEntry(tid, pc + 2);
+        fixed |= removed;
+    }
+    auto btb_inst = btb->getInst(tid, pc);
+
+    // 如果 inst 是分支指令，那么更新 btb
+    if (br_type != enums::NoBranch)
+    {
+        auto btb_inst = btb->getInst(tid, pc);
+        fixed |= btb_inst != inst;
+        assert(fixed || inst->isDirectCtrl());
+
+        auto* btb_target = btb->lookup(tid, pc, br_type);
+        if (btb_target)
+        {
+            fixed |= btb_target->instAddr() != taken_target.instAddr();
+        }
+        btb->update(tid, pc, taken_target, br_type, inst);
+    }
+    // 否则将 invalid btb entry 移除，必定有 invalid entry
+    // 否则不会触发 squash
+    else
+    {
+        auto removed = btb->removeBTBEntry(tid, pc);
+        fixed |= removed;
+    }
+    return fixed;
+}
 
 bool
 BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
@@ -136,7 +217,8 @@ BPredUnit::predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
     // if prediction was wrong.
 
     BranchType brType = getBranchType(inst);
-    hist = new PredictorHistory(tid, seqNum, pc.instAddr(), inst);
+    ++maxHistId;
+    hist = new PredictorHistory(tid, seqNum, pc.instAddr(), maxHistId, inst);
 
     stats.lookups[tid][brType]++;
     ppBranches->notify(1);
@@ -400,6 +482,9 @@ BPredUnit::commitBranch(ThreadID tid, PredictorHistory* &hist)
                          hist->type,
                          hist->rasHistory);
     }
+    // 确保 history 是按最旧到最新的顺序 commit 的
+    ++minHistId;
+    assert(hist->hist_id == minHistId);
 }
 
 
@@ -451,6 +536,9 @@ BPredUnit::squashHistory(ThreadID tid, PredictorHistory* &history)
 
     // This call should delete the bpHistory.
     squash(tid, history->bpHistory);
+    // 确保 history 是按最新到最旧的顺序 squash 的
+    assert(history->hist_id == maxHistId);
+    maxHistId--;
 
     delete history;
     history = nullptr;
@@ -495,6 +583,8 @@ BPredUnit::squash(const InstSeqNum &squashed_sn,
     if (!pred_hist.empty()) {
 
         PredictorHistory* const hist = pred_hist.front();
+        assert(hist->seqNum == squashed_sn);
+        assert(hist->hist_id == maxHistId);
 
         DPRINTF(Branch, "[tid:%i] [squash sn:%llu] Mispredicted: %s, PC:%#x\n",
                     tid, squashed_sn, toString(hist->type), hist->pc);

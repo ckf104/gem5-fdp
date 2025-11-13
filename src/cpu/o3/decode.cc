@@ -43,6 +43,7 @@
 #include "arch/generic/pcstate.hh"
 #include "base/trace.hh"
 #include "cpu/inst_seq.hh"
+#include "cpu/nop_static_inst.hh"
 #include "cpu/o3/dyn_inst.hh"
 #include "cpu/o3/limits.hh"
 #include "debug/Activity.hh"
@@ -307,7 +308,7 @@ Decode::squash(const DynInstPtr &inst, ThreadID tid)
     toFetch->decodeInfo[tid].mispredictInst = inst;
     toFetch->decodeInfo[tid].squash = true;
     toFetch->decodeInfo[tid].doneSeqNum = inst->seqNum;
-    set(toFetch->decodeInfo[tid].nextPC, *inst->branchTarget());
+    set(toFetch->decodeInfo[tid].nextPC, inst->readPredTarg());
 
     // Looking at inst->pcState().branching()
     // may yield unexpected results if the branch
@@ -620,6 +621,142 @@ Decode::decode(bool &status_change, ThreadID tid)
     }
 }
 
+
+void
+Decode::pushTmpHistoryToBP(const DynInstPtr& dynInst)
+{
+    using namespace gem5::branch_prediction;
+
+    bool taken = false;
+    auto br_type = getBranchType(dynInst->staticInst);
+    BPredUnit::PredictorHistory* bp_history =
+        static_cast<BPredUnit::PredictorHistory*>(dynInst->tmpBPHistory[0]);
+    assert(!dynInst->tmpBPHistory[1]);
+    // 如果 bp_history 不为空，并且 btb 预测正确，则将 history 压入
+    // branch predictor 中
+    if (bp_history)
+    {
+        assert(br_type != enums::NoBranch);
+        auto& hist_queue = branchPred->predHist[dynInst->threadNumber];
+        if (!hist_queue.empty())
+        {
+            assert(hist_queue.front()->seqNum < dynInst->seqNum);
+            assert(hist_queue.front()->hist_id < bp_history->hist_id);
+        }
+        hist_queue.push_front(bp_history);
+
+        if (bp_history->predTaken)
+        {
+            dynInst->setPredTarg(*bp_history->target);
+            taken = true;
+        }
+    }
+    // 在 not taken 的情况下，bp_history 的 target 不一定正确，因为在预测的时候
+    // 没有指令信息，不知道指令的长度
+    if (!taken)
+    {
+        dynInst->setPredTarg(dynInst->pcState());
+        auto& inst = dynInst->staticInst;
+        inst->advancePC(*dynInst->predPC);
+        auto pc = dynInst->pcState().instAddr();
+        auto last_inst = !inst->isMicroop() || inst->isLastMicroop();
+        if (last_inst)
+        {
+            assert(dynInst->predPC->instAddr() == pc + inst->size());
+        }
+        else
+        {
+            assert(dynInst->predPC->instAddr() == pc);
+        }
+    }
+    dynInst->setPredTaken(taken);
+
+    // 清空 tmp bp history
+    dynInst->tmpBPHistory[0] = nullptr;
+    dynInst->tmpBPHistory[1] = nullptr;
+}
+
+bool
+Decode::checkInstBP(const DynInstPtr& dynInst, PCStateBase& taken_target)
+{
+    using namespace gem5::branch_prediction;
+
+    // page fault 时会产生 nop inst, 它没有设置 inst size
+    if (dynInst->staticInst == nopStaticInstPtr)
+    {
+        assert(dynInst->tmpBPHistory[0] == nullptr);
+        assert(dynInst->tmpBPHistory[1] == nullptr);
+        return false;
+    }
+
+    auto br_type = getBranchType(dynInst->staticInst);
+    bool mis_match = false;
+    bool bp1_should_valid = br_type != enums::NoBranch;
+    bool bp1_valid = dynInst->tmpBPHistory[0];
+    bool bp2_should_valid = false;
+    bool bp2_valid = dynInst->tmpBPHistory[1];
+
+    bool taken = false;
+    Addr bp_target = 0;
+
+    // RISC-V 的 2 bytes 指令至多包含一个 bp history
+    bool compress = dynInst->staticInst->size() == 2;
+    assert(!compress || !bp2_valid);
+
+    // flush 的原因可能是 btb mismatch，或者 pred taken 预测的地址不对
+    // btb mismatch
+    if (bp1_valid != bp1_should_valid || bp2_valid != bp2_should_valid)
+    {
+        mis_match = true;
+    }
+    else if (bp1_valid || bp2_valid)
+    {
+        BPredUnit::PredictorHistory* bp_hist = nullptr;
+        if (bp1_valid)
+        {
+            bp_hist = static_cast<BPredUnit::PredictorHistory*>(
+                dynInst->tmpBPHistory[0]);
+        }
+        else
+        {
+            bp_hist = static_cast<BPredUnit::PredictorHistory*>(
+                dynInst->tmpBPHistory[1]);
+        }
+        assert(bp_hist);
+        // btb mismatch
+        if (bp_hist->type != br_type)
+        {
+            mis_match = true;
+        }
+        taken = bp_hist->condPred;
+        bp_target = bp_hist->target->instAddr();
+    }
+
+    // 对于 pc 相对跳转的指令，我们可以在译码阶段拿到真实的跳转目标地址
+    if (dynInst->isDirectCtrl())
+    {
+        set(taken_target, *dynInst->branchTarget());
+    }
+    // 如果此时 mis_match 为 false，说明 btb 正确预测了指令类型
+    if (!mis_match)
+    {
+        taken |= dynInst->isUncondCtrl();
+        if (taken)
+        {
+            // 检查 taken 的 pc 相对跳转的地址是否正确
+            if (dynInst->isDirectCtrl())
+            {
+                mis_match = taken_target.instAddr() != bp_target;
+            }
+        }
+        // 如果是因为 br target mismatch，则不可能是间接跳转指令
+        // 因为间接跳转指令的跳转目标是使用 ras 或者 indirect predictor 获得的
+        assert(!mis_match || dynInst->isDirectCtrl());
+    }
+
+    return mis_match;
+}
+
 void
 Decode::decodeInsts(ThreadID tid)
 {
@@ -696,43 +833,66 @@ Decode::decodeInsts(ThreadID tid)
 
         // Ensure that if it was predicted as a branch, it really is a
         // branch.
-        if (inst->readPredTaken() && !inst->isControl()) {
-            panic("Instruction predicted as a branch!");
-
-            ++stats.controlMispred;
-
-            // Might want to set some sort of boolean and just do
-            // a check at the end
+        std::unique_ptr<PCStateBase> taken_target(inst->pcState().clone());
+        bool mis_pred = checkInstBP(inst, *taken_target);
+        if (mis_pred)
+        {
+            // 清除所有的 tmp history
+            cpu->clearTmpBPHistory(inst->seqNum, tid);
+            auto pc = inst->pcState().instAddr();
+            if (inst->isIndirectCtrl())
+            {
+                set(taken_target, inst->pcState());
+                branchPred->lookupIndirect(inst->staticInst, inst->seqNum,
+                    *taken_target, tid);
+            }
+            else if (inst->isDirectCtrl())
+            {
+                assert(taken_target == inst->branchTarget());
+            }
+            else
+            {
+                // 如果不是 branch，那么不需要 taken target
+                auto br_type = branch_prediction::getBranchType(
+                    inst->staticInst);
+                assert(br_type == enums::NoBranch);
+            }
+            // 修正 btb 表项
+            branchPred->btbFixFromDecode(inst->staticInst, inst->seqNum,
+                *taken_target, pc, tid);
+            // 重新预测
+            std::unique_ptr<PCStateBase> predict_pc(inst->pcState().clone());
+            auto br_type = branch_prediction::getBranchType(inst->staticInst);
+            bool taken = false;
+            if (br_type != enums::NoBranch)
+            {
+                taken = branchPred->predict(inst->staticInst, inst->seqNum,
+                    *predict_pc, tid);
+                auto* hist = branchPred->predHist[tid].front();
+                assert(hist->btbHit);
+                hist->btbHit = false;
+            }
+            if (taken)
+            {
+                assert(*taken_target == *predict_pc);
+            }
+            else
+            {
+                // 因为都是针对普通指令或者 macro 指令中最后
+                // 一条 micro 指令进行预测的，因此不跳转的话新的
+                // pc 应该是取指 pc + 指令长度
+                assert(predict_pc->instAddr() ==
+                    pc + inst->staticInst->size());
+            }
+            inst->setPredTaken(taken);
+            inst->setPredTarg(*predict_pc);
             squash(inst, inst->threadNumber);
-
             break;
         }
-
-        // Go ahead and compute any PC-relative branches.
-        // This includes direct unconditional control and
-        // direct conditional control that is predicted taken.
-        if (inst->isDirectCtrl() &&
-           (inst->isUncondCtrl() || inst->readPredTaken()))
+        else
         {
-            ++stats.branchResolved;
-
-            std::unique_ptr<PCStateBase> target = inst->branchTarget();
-            if (*target != inst->readPredTarg()) {
-                ++stats.branchMispred;
-
-                // Might want to set some sort of boolean and just do
-                // a check at the end
-                squash(inst, inst->threadNumber);
-
-                DPRINTF(Decode,
-                        "[tid:%i] [sn:%llu] "
-                        "Updating predictions: Wrong predicted target: %s \
-                        PredPC: %s\n",
-                        tid, inst->seqNum, inst->readPredTarg(), *target);
-                //The micro pc after an instruction level branch should be 0
-                inst->setPredTarg(*target);
-                break;
-            }
+            // 如果 btb 预测正确，将 tmp history 压入 BP
+            pushTmpHistoryToBP(inst);
         }
     }
 

@@ -62,6 +62,9 @@ namespace gem5
 
 namespace o3 {
     class BAC;
+    class Fetch;
+    class Decode;
+    class CPU;
 }
 
 namespace branch_prediction
@@ -74,6 +77,9 @@ namespace branch_prediction
 class BPredUnit : public SimObject
 {
     friend class o3::BAC;
+    friend class o3::Fetch;
+    friend class o3::Decode;
+    friend class o3::CPU;
 
     typedef BranchPredictorParams Params;
     typedef enums::TargetProvider TargetProvider;
@@ -104,6 +110,14 @@ class BPredUnit : public SimObject
      */
     bool predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
                  PCStateBase &pc, ThreadID tid);
+
+    // 这个预测不改变分支预测器内部的状态
+    void lookupIndirect(const StaticInstPtr &inst, const InstSeqNum &seqNum,
+                 PCStateBase &pc, ThreadID tid);
+
+    bool btbFixFromDecode(const StaticInstPtr &inst, const InstSeqNum &seqNum,
+                const PCStateBase &taken_target, const Addr fetch_pc,
+                ThreadID tid);
 
     /**
      * Tells the branch predictor to commit any updates until the given
@@ -351,8 +365,8 @@ class BPredUnit : public SimObject
          * information needed to update the predictor, BTB, and RAS.
          */
         PredictorHistory(ThreadID _tid, InstSeqNum sn, Addr _pc,
-                         const StaticInstPtr & inst)
-            : seqNum(sn), tid(_tid), pc(_pc),
+                         uint64_t _hist_id, const StaticInstPtr & inst)
+            : seqNum(sn), hist_id(_hist_id), tid(_tid), pc(_pc),
               inst(inst), type(getBranchType(inst)),
               call(inst->isCall()), uncond(inst->isUncondCtrl()),
               predTaken(false), actuallyTaken(false), condPred(false),
@@ -380,6 +394,8 @@ class BPredUnit : public SimObject
 
         /** The sequence number for the predictor history entry. */
         InstSeqNum seqNum;
+
+        const uint64_t hist_id;
 
         /** The thread id. */
         const ThreadID tid;
@@ -478,6 +494,10 @@ class BPredUnit : public SimObject
 
     /** Number of bits to shift instructions by for predictor addresses. */
     const unsigned instShiftAmt;
+
+    /* (minHistId, maxHistId] 包含了所有 speculative history */
+    uint64_t maxHistId = 0;
+    uint64_t minHistId = 0;
 
     /**
      * The per-thread predictor history. This is used to update the predictor

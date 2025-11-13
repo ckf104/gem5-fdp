@@ -52,23 +52,17 @@ namespace o3
 
 /** Fetch Target Methods -------------------------------- */
 FetchTarget::FetchTarget(const PCStateBase &_start_pc, InstSeqNum _seqNum)
-    : ftSeqNum(_seqNum),
-      is_branch(false), taken(false),
-      bpu_history(nullptr)
+    : ftSeqNum(_seqNum)
 {
     set(startPC , _start_pc);
 }
 
 
 void
-FetchTarget::finalize(const PCStateBase &exit_pc, InstSeqNum sn,
-                      bool _is_branch, bool pred_taken,
-                      const PCStateBase &pred_pc)
+FetchTarget::finalize(const PCStateBase &exit_pc, bool taken)
 {
     set(endPC, exit_pc);
-    set(predPC, pred_pc);
-    taken = pred_taken;
-    is_branch = _is_branch;
+    pred_taken = taken;
 }
 
 
@@ -78,7 +72,7 @@ FetchTarget::print()
     std::stringstream ss;
     ss << "FT[" << ftSeqNum << "]: [0x" << std::hex
         << startPC->instAddr() << "->0x" << endPC->instAddr()
-        << "|B:" << is_branch
+        << "|B:" << pred_taken
         << "]";
     return ss.str();
 }
@@ -170,20 +164,6 @@ FTQ::isValid(ThreadID tid)
     return ftqStatus[tid] != Invalid;
 }
 
-
-void
-FTQ::lock(ThreadID tid)
-{
-    ftqStatus[tid] = Locked;
-}
-
-bool
-FTQ::isLocked(ThreadID tid)
-{
-    return ftqStatus[tid] == Locked;
-}
-
-
 void
 FTQ::forAllForward(ThreadID tid, std::function<void(FetchTargetPtr&)> f)
 {
@@ -219,7 +199,7 @@ void
 FTQ::squash(ThreadID tid)
 {
     for (auto ft : ftq[tid]) {
-        assert(ft->bpu_history == nullptr);
+        assert(ft->bpu_history.empty());
         ppFTQRemove->notify(ft);
     }
     ftq[tid].clear();
@@ -231,7 +211,7 @@ void
 FTQ::squashSanityCheck(ThreadID tid)
 {
     for (auto ft : ftq[tid]) {
-        assert(ft->bpu_history == nullptr);
+        assert(ft->bpu_history.empty());
     }
 }
 
@@ -256,30 +236,12 @@ FTQ::readHead(ThreadID tid)
 bool
 FTQ::updateHead(ThreadID tid)
 {
-    if (ftq[tid].front()->bpu_history != nullptr) {
-        DPRINTF(FTQ, "Pop FT:[fn%llu] failed. Still contains BP history.\n",
-                    ftq[tid].front()->ftNum());
-        ftqStatus[tid] = Invalid;
-        return false;
-    }
-
-    bool ret_val = true;
-
-    // TODO make this more efficient
-    // Once the head of the FTQ gets updated and
-    // the FTQ got blocked by a complex instruction resteere
-    // we unblock by squashing
-    if (ftqStatus[tid] == Locked) {
-        DPRINTF(FTQ, "Pop FT:[fn%llu] unblocks FTQ. Require squash.\n",
-                    ftq[tid].front()->ftNum());
-        ftqStatus[tid] = Invalid;
-        ret_val = false;
-    }
+    assert(ftq[tid].empty());
 
     ppFTQRemove->notify(ftq[tid].front());
     ftq[tid].pop_front();
     stats.removals++;
-    return ret_val;
+    return true;
 }
 
 

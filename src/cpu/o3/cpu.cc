@@ -80,6 +80,7 @@ CPU::CPU(const BaseO3CPUParams &params)
       instcount(0),
 #endif
       removeInstsThisCycle(false),
+      branchPred(params.branchPred),
       bac(this, params),
       ftq(this, params),
       fetch(this, params),
@@ -1184,6 +1185,46 @@ CPU::removeFrontInst(const DynInstPtr &inst)
 
     // Remove the front instruction.
     removeList.push(inst->getInstListIt());
+}
+
+void
+CPU::clearTmpBPHistory(const InstSeqNum &seq_num, ThreadID tid)
+{
+    using namespace branch_prediction;
+
+    // 最早的 tmp bp history 在 ftq 中，然后是在 dyn inst 中
+    bac.squashBpuHistories(tid);
+
+    if (instList.empty())
+    {
+        return;
+    }
+    ListIt inst_iter = instList.end();
+    inst_iter--;
+
+    while ((*inst_iter)->seqNum >= seq_num) {
+
+        bool break_loop = (inst_iter == instList.begin());
+        void* tmp_hist2 = (*inst_iter)->tmpBPHistory[1];
+        auto* bp_hist2 = static_cast<BPredUnit::PredictorHistory*>(tmp_hist2);
+        void* tmp_hist1 = (*inst_iter)->tmpBPHistory[0];
+        auto* bp_hist1 = static_cast<BPredUnit::PredictorHistory*>(tmp_hist1);
+        // 从最新到最旧 squash tmp history
+        if (bp_hist2)
+        {
+            branchPred->squashHistory(tid, bp_hist2);
+            (*inst_iter)->tmpBPHistory[1] = nullptr;
+        }
+        if (bp_hist1)
+        {
+            branchPred->squashHistory(tid, bp_hist1);
+            (*inst_iter)->tmpBPHistory[0] = nullptr;
+        }
+        inst_iter--;
+
+        if (break_loop)
+            break;
+    }
 }
 
 void

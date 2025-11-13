@@ -100,7 +100,7 @@ BAC::setTimeBuffer(TimeBuffer<TimeStruct> *time_buffer)
     timeBuffer = time_buffer;
 
     // Create wires to get information from proper places in time buffer.
-    fromFetch = timeBuffer->getWire(-fetchToBacDelay);
+    // fromFetch = timeBuffer->getWire(-fetchToBacDelay);
     fromDecode = timeBuffer->getWire(-decodeToFetchDelay);
     fromCommit = timeBuffer->getWire(-commitToFetchDelay);
 }
@@ -299,7 +299,7 @@ BAC::checkAndUpdateBPUSignals(ThreadID tid)
 
         // In any case, squash the FTQ and the branch histories in the
         // FTQ first.
-        squashBpuHistories(tid);
+        cpu->clearTmpBPHistory(fromCommit->commitInfo[tid].doneSeqNum, tid);
         squash(*fromCommit->commitInfo[tid].pc, tid);
 
         // If it was a branch mispredict on a control instruction, update the
@@ -342,37 +342,31 @@ BAC::checkAndUpdateBPUSignals(ThreadID tid)
                         tid, *fromDecode->decodeInfo[tid].nextPC);
 
         // Squash.
-        squashBpuHistories(tid);
+        // 目前的 decode 代码中 squash 信号只会在分支预测错误(btb miss)时发出
+        assert(fromDecode->decodeInfo[tid].branchMispredict);
+        // 在 decode squash 传递给 fetch 阶段时又可能产生了新的 tmpBPHistory
+        // 将它们 clear 掉
+        cpu->clearTmpBPHistory(fromDecode->decodeInfo[tid].doneSeqNum, tid);
         squash(*fromDecode->decodeInfo[tid].nextPC, tid);
-
-        // Update the branch predictor.
-        if (fromDecode->decodeInfo[tid].branchMispredict) {
-
-            bpu->squash(fromDecode->decodeInfo[tid].doneSeqNum,
-                    *fromDecode->decodeInfo[tid].nextPC,
-                    fromDecode->decodeInfo[tid].branchTaken, tid, false);
-            stats.branchMisspredict++;
-            stats.squashBranchDecode++;
-        } else {
-            bpu->squash(fromDecode->decodeInfo[tid].doneSeqNum,
-                              tid);
-            stats.noBranchMisspredict++;
+        // 如果 squash inst 是分支指令的话，那它应该在栈顶
+        // 否则，栈顶一定是比它更老的指令
+        if (!bpu->predHist[tid].empty())
+        {
+            auto top_seq = bpu->predHist[tid].front()->seqNum;
+            auto& squash_inst = fromDecode->decodeInfo[tid].squashInst;
+            auto br_type = getBranchType(squash_inst->staticInst);
+            if (br_type == enums::NoBranch)
+            {
+                assert(top_seq < squash_inst->seqNum);
+            }
+            else
+            {
+                assert(top_seq == squash_inst->seqNum);
+            }
         }
         return true;
     }
 
-
-    // Check squash signals from fetch.
-    if (fromFetch->fetchInfo[tid].squash
-        && bacStatus[tid] != Squashing) {
-        DPRINTF(BAC, "Squashing from fetch with PC = %s\n",
-                *fromFetch->fetchInfo[tid].nextPC);
-
-        // Squash unless we're already squashing
-        squashBpuHistories(tid);
-        squash(*fromFetch->fetchInfo[tid].nextPC, tid);
-        return true;
-    }
     return false;
 }
 
@@ -412,20 +406,6 @@ BAC::checkSignalsAndUpdate(ThreadID tid)
         DPRINTF(BAC, "[tid:%i] FTQ is invalid. Wait for resteer.\n", tid);
 
         bacStatus[tid] = Idle;
-        return true;
-    }
-
-    // Check if the FTQ got blocked or unblocked
-    if ((bacStatus[tid] == Running) && ftq->isLocked(tid)) {
-
-        DPRINTF(BAC, "[tid:%i] FTQ is locked\n", tid);
-        bacStatus[tid] = FTQLocked;
-        return true;
-    }
-    if ((bacStatus[tid] == FTQLocked) && !ftq->isLocked(tid)) {
-
-        DPRINTF(BAC, "[tid:%i] FTQ not locked anymore -> Running\n", tid);
-        bacStatus[tid] = Running;
         return true;
     }
 
@@ -471,19 +451,22 @@ BAC::squashBpuHistories(ThreadID tid)
     unsigned n_fts = ftq->size(tid);
     if (n_fts == 0) return;
 
+    auto lambda = [this, tid](FetchTargetPtr &ft)
+    {
+        for (auto it = ft->bpu_history.rbegin(); it != ft->bpu_history.rend();
+                 ++it)
+        {
+            auto hist = static_cast<BPredUnit::PredictorHistory*>(*it);
+            assert(hist);
+            bpu->squashHistory(tid, hist);
+            assert(hist == nullptr);
+        }
+        ft->bpu_history.clear();
+    };
+
     // Iterate over the FTQ in reverse order to
     // revert all predictions made.
-    ftq->forAllBackward(tid,
-        [this, tid](FetchTargetPtr &ft)
-        {
-            if (ft->bpu_history) {
-                auto hist = static_cast<BPredUnit::PredictorHistory*>
-                                                    (ft->bpu_history);
-                bpu->squashHistory(tid, hist);
-                assert(hist == nullptr);
-                ft->bpu_history = nullptr;
-            }
-        });
+    ftq->forAllBackward(tid, lambda);
 }
 
 void
@@ -566,7 +549,7 @@ BAC::predict(ThreadID tid, const StaticInstPtr &inst,
      * The postFetch() function will move the history from the FTQ to the
      * main history of the BPU.
     */
-    ft->bpu_history = static_cast<void*>(bpu_history);
+    ft->bpu_history.push_back(bpu_history);
 
     DPRINTF(Branch,"[tid:%i, ftn:%llu] History added.\n", tid, ft->ftNum());
     return taken;
@@ -606,7 +589,8 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
     // In each cycles a new fetch target is created starting with
     // the current PC.
     FetchTargetPtr curFT = newFetchTarget(tid, cur_pc);
-
+    std::unique_ptr<PCStateBase> next_pc(cur_pc.clone());
+    bool pred_taken = false;
 
     // Scan through the instruction stream and search for branches.
     // The BTB contains only branches where taken at least once.
@@ -614,10 +598,20 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
 
         // Check if the current search address can be found in the BTB
         // indicating the end of the branch.
-        branch_found = bpu->BTBValid(tid, search_addr);
+        auto static_inst = bpu->BTBGetInst(tid, search_addr);
 
-        // If its a branch stop searching
-        if (branch_found) {
+        if (static_inst)
+        {
+            next_pc->set(cur_pc.instAddr());
+            pred_taken = predict(tid, static_inst, curFT, *next_pc);
+
+            // RISC-V 体系结构中一条指令只有至多一个 branch，并且该 branch 是最
+            // 后一条 micro inst
+            assert(!static_inst->isMicroop() || static_inst->isLastMicroop());
+        }
+
+        // 如果发现了 taken branch 就退出
+        if (pred_taken) {
             break;
         }
 
@@ -635,50 +629,10 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
     // in the fetch target
     cur_pc.set(search_addr);
 
-
-    // Search stopped either because a branch was found in instruction
-    // stream or the maximum search width per cycle was reached.
-    // In the first case make the branch prediction and in the later
-    // advance the PC to start the search at the following address.
-
-    // Make a copy of the current PC since the BPU will update it.
-    std::unique_ptr<PCStateBase> next_pc(cur_pc.clone());
-    StaticInstPtr staticInst = nullptr;
-
-    if (branch_found) {
-        // Branch found in instruction stream. As the current
-        // BPU implementation required the static instruction we need to
-        // look it up from the BTB.
-        staticInst = bpu->BTBGetInst(tid, cur_pc.instAddr());
-        assert(staticInst);
-
-        // Now make the actual prediction. Note the BPU will advance
-        // the PC to the next instruction.
-        predict_taken = predict(tid, staticInst, curFT, *next_pc);
-
-        DPRINTF(BAC, "[tid:%i, ftn:%llu] Branch found at PC %#x "
-                "taken?:%i, target:%#x\n",
-                tid, curFT->ftNum(), cur_pc.instAddr(),
-                predict_taken, next_pc->instAddr());
-
-        stats.branches++;
-        if (predict_taken) {
-            stats.predTakenBranches++;
-        }
-
-    } else {
-
-        // Not a branch therefore we will continue the next FT at the
-        // next address
-        next_pc->set(cur_pc.instAddr() + minInstSize);
-    }
-
-
     // Complete the fetch target if
-    // - a branch is found
+    // - a taken branch is found
     // - or the maximum fetch bandwidth is reached.
-    curFT->finalize(cur_pc, curFT->ftNum(), branch_found,
-                        predict_taken, *next_pc);
+    curFT->finalize(cur_pc, pred_taken);
 
     ftq->insert(tid, curFT);
     wroteToTimeBuffer = true;
@@ -703,16 +657,7 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
     // This could be circumvented by using not only the PC but also the
     // microPC to make predictions. However, since such instructions are
     // rare this is not implemented.
-    if (staticInst
-        && staticInst->isMicroop() && !staticInst->isLastMicroop()) {
-        stats.branchesNotLastuOp++;
-        // The target is always to itself no matter if its taken or not.
-        // assert(next_pc->instAddr() == search_addr);
-        DPRINTF(BAC, "Branch detected which is not the last uOp %s. "
-                    "Continue with next address.\n", cur_pc);
-
-        next_pc->set(cur_pc.instAddr() + staticInst->size());
-    }
+    // 只考虑 RISC-V 体系结构就不处理这些复杂情况了
 
     DPRINTF(BAC, "[tid:%i] [fn:%llu] %i addresses searched. "
             "Branch found:%i. Continue with PC:%s in next cycle\n",
@@ -726,228 +671,6 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
 
     // ftq->printFTQ(tid);
 }
-
-
-
-/// Post fetch part ------------------------------------------
-
-
-bool
-BAC::updatePreDecode(ThreadID tid, const InstSeqNum seqNum,
-                     const StaticInstPtr &inst, PCStateBase &pc,
-                     const FetchTargetPtr &ft)
-{
-    assert(ft != nullptr);
-    // The PC must be in the range of the fetch target.
-    assert(ft->inRange(pc.instAddr()));
-
-    assert(ft->ftNum() == ftq->readHead(tid)->ftNum());
-    BranchType brType = branch_prediction::getBranchType(inst);
-    stats.preDecUpdate[brType]++;
-
-    DPRINTF(BAC, "%s(tid:%i, sn:%lu, inst: %s, PC:%#x, FT[%llu, taken:%i, "
-            "end:#%#x)\n", __func__, tid, seqNum,
-            branch_prediction::toString(brType), pc.instAddr(), ft->ftNum(),
-            ft->predTaken(), ft->endAddress());
-
-    bool target_set = false;
-    BPredUnit::PredictorHistory* hist = nullptr;
-
-    // The fetch stage will call this function after pre-decoding an
-    // instruction finds a branch instruction. Check if this is the exit
-    // branch.
-    if (ft->isExitBranch(pc.instAddr())
-        && ft->bpu_history != nullptr) {
-
-        // Pop the history from the FTQ to move it later to the
-        // history buffer.
-        hist = static_cast<BPredUnit::PredictorHistory*>(ft->bpu_history);
-        ft->bpu_history = nullptr;
-
-        DPRINTF(BAC, "Pop history from FT:%llu => sn:%llu, PC:%#x, taken:%i, "
-                "target:%#x\n", ft->ftNum(), seqNum, hist->pc,
-                hist->predTaken, hist->target->instAddr());
-
-    }
-
-    // Special cases ------------------------------------------------
-    // We need to handle two corner cases for complex instructions
-    // 1. For complex instructions it can happen that several branches with
-    // different types exists in the same instruction. If the branch type
-    // does not match with the type of the prediction history its invalid.
-    // We squash everything  the history and we can make a fresh
-    // prediction
-    if (hist && (hist->type != brType)) {
-        DPRINTF(Branch, "Branch types dont match. Delete history\n", tid);
-        stats.typeMissmatch++;
-
-        // Push the history back to the FTQ to allow it to be sqaushed
-        // in correct order. Then squash all histories right away.
-        ft->bpu_history = static_cast<void*>(hist);
-        hist = nullptr;
-        squashBpuHistories(tid);
-
-        // Lock the FTQ. The complex instruction needs to
-        // be completed before unlocking. Unlocking is performed by resetting
-        // the BAC stage.
-        ftq->lock(tid);
-    }
-
-    // 2. For complex instruction with more than one branches the history
-    // the history is already used. We only predict the first branch in a
-    // complex instruction (see createFetchTarget() function).
-    // In that case we squash the FTQ and lock it until the full instruction
-    // Afterwards the fetch stage will reset the BAC stage with a
-    // bacResteer() call. Hence, operation for complex instructions is:
-    // Detecting multi branch inst. -> lock FTQ util inst. done. -> reset BAC.
-    //
-    // Note we might end up here multiple times until the full instruction
-    // is completed.
-    if (inst->isMicroop() && !inst->isLastMicroop() && (hist == nullptr)) {
-
-        DPRINTF(Branch, "No history for complex instruction found. \n");
-        stats.multiBranchInst++;
-
-        // First squash all histories that are already in the FTQ
-        // to have a clean state.
-        squashBpuHistories(tid);
-
-        // Then lock the FTQ. The complex instruction needs to
-        // be completed before unlocking. Unlocking is performed by
-        // resetting the BAC stage with a bacResteer() call from the
-        // fetch stage.
-        ftq->lock(tid);
-
-        // Finally we can make a fresh prediction.
-        bpu->predict(inst, ft->ftNum(), pc, tid, hist);
-        target_set = true;
-    }
-
-
-    // Normal case --------------------------------------------------
-    // Check if we have a valid history. If not we need to create one.
-    if (hist == nullptr) {
-        DPRINTF(BAC, "[tid:%i, sn:%llu] No branch history for PC:%#x\n",
-                tid, seqNum, pc.instAddr());
-        stats.noHistType[brType]++;
-
-        // The branch was not detected by the BAC stage in the first place
-        // because the BTB did not had an entry for this PC. It can happen
-        // if this is the first time the branch is encountered, the branch
-        // was never taken before, or the entry got evicted.
-        //
-        // Create a "dummy" history object by assuming the branch is not
-        // taken. This will allow the BPU to fix its histories and internal
-        // state in case the assumption was wrong. It works because for
-        // FDP we use "taken" history where not taken branches don't modify
-        // the global history.
-
-        hist = new BPredUnit::PredictorHistory(tid, seqNum,
-                                               pc.instAddr(), inst);
-        bpu->branchPlaceholder(tid, pc.instAddr(), inst->isUncondCtrl(),
-                               hist->bpHistory);
-
-        hist->predTaken = hist->condPred = false;
-        hist->targetProvider = BPredUnit::TargetProvider::NoTarget;
-
-        set(hist->target, std::unique_ptr<PCStateBase>(pc.clone()));
-        inst->advancePC(*hist->target);
-
-    }
-
-    assert(hist != nullptr);
-    assert(hist->type == brType);
-
-    // Assign the branch instruction instance its sequence number
-    // and push the history to the main history buffer.
-    hist->seqNum = seqNum;
-    bpu->predHist[tid].push_front(hist);
-
-    // Finally update the current fetch PC if not already done.
-    // For taken branches the target is stored in the FTQ. For not taken
-    // branches we need to advance the PC.
-    if (!target_set) {
-        if (hist->predTaken) {
-            set(pc, ft->readPredTarg());
-        } else {
-            inst->advancePC(pc);
-        }
-    }
-
-    DPRINTF(BAC, "%s done. next PC:%s\n", __func__, pc);
-    return hist->predTaken;
-}
-
-
-bool
-BAC::updatePC(const DynInstPtr &inst,
-              PCStateBase &fetch_pc, FetchTargetPtr &ft)
-{
-    // This function will update the fetch PC to the next instruction.
-    // If the current instruction is a branch it will make
-    // the branch prediction.
-    bool predict_taken;
-    ThreadID tid = inst->threadNumber;
-
-
-    if (inst->isControl()) {
-        // The instruction is a control instruction.
-
-        // if (decoupledFrontEnd) {
-        if (true) {
-            // With a decoupled front-end the branch prediction was done
-            // while creating the fetch target. Now update the prediction
-            // with the information from the predecoding.
-            predict_taken = updatePreDecode(tid, inst->seqNum,
-                                            inst->staticInst, fetch_pc, ft);
-        }
-
-        DPRINTF(BAC, "[tid:%i] [sn:%llu] Branch at PC %#x "
-                "predicted %s to go to %s\n",
-                tid, inst->seqNum, inst->pcState().instAddr(),
-                predict_taken ? "taken" : "not taken",
-                fetch_pc);
-        inst->setPredTarg(fetch_pc);
-        inst->setPredTaken(predict_taken);
-
-        ++stats.branches;
-
-        if (predict_taken) {
-            ++stats.predTakenBranches;
-        }
-
-    } else {
-
-        // For non-branch instructions simply advance the PC.
-        inst->staticInst->advancePC(fetch_pc);
-        inst->setPredTarg(fetch_pc);
-        inst->setPredTaken(false);
-        predict_taken = false;
-    }
-
-
-    // if (decoupledFrontEnd) {
-    if (true) {
-
-        // For the decoupled front-end we need to check if this instruction
-        // is the exit instruction of the fetch target. It does not need
-        // to be a branch.
-        // If the instruction is micro coded check if its the last uOp.
-        // Also remove the fetch target if the FTQ became invalid.
-        if ((ft->isExitInst(inst->pcState().instAddr())
-                && (!inst->isMicroop() || inst->isLastMicroop()))
-            || !ftq->isValid(tid)) {
-
-            DPRINTF(BAC, "[tid:%i][ft:%llu] Reached end of Fetch Target\n",
-                            tid, ft->ftNum());
-
-            ft = nullptr;
-        }
-    }
-
-    return predict_taken;
-}
-
 
 void
 BAC::profileCycle(ThreadID tid)

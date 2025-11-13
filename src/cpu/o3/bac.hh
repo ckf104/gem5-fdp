@@ -93,6 +93,7 @@ typedef std::shared_ptr<FetchTarget> FetchTargetPtr;
 class BAC
 {
   typedef branch_prediction::BranchType BranchType;
+  friend class o3::CPU;
 
   public:
     /** Overall decoupled BPU stage status. Used to determine if the CPU can
@@ -111,8 +112,7 @@ class BAC
         Running,
         Squashing,
         Blocked,
-        FTQFull,
-        FTQLocked
+        FTQFull
     };
 
   private:
@@ -262,69 +262,6 @@ class BAC
      **/
     void generateFetchTargets(ThreadID tid, bool &status_change);
 
-
-
-    /* ----------------------------------------------------------------
-     * Next PC address calculation
-     *
-     * To update the PC the fetch stage will call the updatePC() method
-     * with the currently pre-decoded instruction.
-     * The BAC stage will then check if the instruction is a branch and
-     * either preform the branch prediction (non-decoupled scenario) or
-     * read the branch prediction from the currentently processed fetch
-     * target (decoupled scenario).
-     */
-  public:
-    /**
-     * Calculate the next PC address depending on the instruction type
-     * and the branch prediction.
-     * @param inst The currently processed dynamic instruction.
-     * @param fetch_pc The current fetch PC passed in by reference. It will
-     * be updated with what the next PC will be.
-     * @param ft The currently processed fetch target. Can be nullptr for
-     * the non-decoupled scenario.
-     * @return Whether or not a branch was predicted as taken.
-     */
-    bool updatePC(const DynInstPtr &inst, PCStateBase &fetch_pc,
-                  FetchTargetPtr &ft);
-
-
-  private:
-
-    /** Pre-decode update -----------------------------------------
-     * After predecoding instruction in the fetch stage all instructions
-     * are known together and a sequence number is assigned to them.
-     * The fetch stage will call this function for every branch instruction
-     * to allow the BAC stage to update the branch predictor history.
-     *
-     * There can be the following two cases:
-     * - The branch was detected by the BAC stage and a prediction was made.
-     *   In that case the branch history is moved from the FTQ to the BPU.
-     *
-     * - The branch was not detected by the BAC stage. In that case a "dummy"
-     *   branch history is created and inserted into the BPU. For this dummy
-     *   prediction it is assumed that the branch is not taken.
-     *   If it turns unconditional or is taken decode or commit will squash
-     *   the branch.
-     *
-     * This function performs the following steps:
-     *  - For every branch where a prediction was made in the first place
-     * It moves the branch history from the FTQ to the BPU.
-     *
-     * Together with inserting an instruction into the instruction queue
-     *  instruction matches the predicted
-     * instruction type. If so update the information with the new.
-     * In case the types dont match something is wrong and we need
-     * to squash. (should not be the case.)
-     * @param seq_num The branches sequence that we want to update.
-     * @param inst The new pre-decoded branch instruction.
-     * @param tid The thread id.
-     * @return Returns if the update was successful.
-     */
-    bool updatePreDecode(ThreadID tid, const InstSeqNum seqNum,
-                         const StaticInstPtr &inst, PCStateBase &pc,
-                         const FetchTargetPtr &ft);
-
   private:
 
     /** Squashes BAC for a specific thread and resets the PC. */
@@ -353,7 +290,9 @@ class BAC
     TimeBuffer<TimeStruct> *timeBuffer;
 
     /** Wire to get fetches's information from backwards time buffer. */
-    TimeBuffer<TimeStruct>::wire fromFetch;
+    // Fetch 阶段不检查指令，只根据 fetch target 取指
+    // 因此 bac 不需要与 fetch 通信
+    // TimeBuffer<TimeStruct>::wire fromFetch;
 
     /** Wire to get decode's information from backwards time buffer. */
     TimeBuffer<TimeStruct>::wire fromDecode;

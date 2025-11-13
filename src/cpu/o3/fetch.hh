@@ -401,6 +401,10 @@ class Fetch
     /** Profile the reasons of fetch stall. */
     void profileStall(ThreadID tid);
 
+    // 将 bac 阶段预测的分支历史绑定到对应的指令上，后续在 decode 阶段检查预测的
+    // 指令类型和跳转目标是否正确
+    static void transferBPHist(DynInstPtr &inst, FetchTargetPtr &ft);
+
   private:
     /** Pointer to the O3CPU. */
     CPU *cpu;
@@ -434,6 +438,10 @@ class Fetch
     FTQ *ftq;
 
     std::unique_ptr<PCStateBase> pc[MaxThreads];
+
+    // 当取完一个 fetch target 包含的指令后，pc 变为无效,
+    // 读取下一个 fetch target 后，pc 重新变为有效
+    bool pcValid[MaxThreads];
 
     Addr fetchOffset[MaxThreads];
 

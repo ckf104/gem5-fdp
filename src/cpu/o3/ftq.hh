@@ -39,6 +39,7 @@
 #ifndef __CPU_O3_FTQ_HH__
 #define __CPU_O3_FTQ_HH__
 
+#include <deque>
 #include <list>
 #include <string>
 
@@ -80,23 +81,17 @@ class FetchTarget
     /** End address of the fetch target */
     std::unique_ptr<PCStateBase> endPC;
 
-    /** Predicted target address of the fetch target.
-     *  Only valid when the ft ends with branch. */
-    std::unique_ptr<PCStateBase> predPC;
-
     /* Fetch targets sequence number */
     const FTSeqNum ftSeqNum;
 
-    /** Whether the exit instruction is a branch */
-    bool is_branch;
-
-    /** If the exit branch is taken */
-    bool taken;
+    // 是否最后一个 branch 预测为跳转
+    bool pred_taken;
 
   public:
     /** Ancore point to attach a branch predictor history.
      * Will carry information while FT is waiting in th FTQ. */
-    void* bpu_history;
+     // 最新的 history 在队列的尾部
+    std::deque<void*> bpu_history;
 
     /* Start address of the basic block */
     Addr startAddress() { return startPC->instAddr(); }
@@ -115,22 +110,12 @@ class FetchTarget
         return addr == endAddress();
     }
 
-    bool isExitBranch(Addr addr) {
-        return (addr == endAddress()) && is_branch;
-    }
-
     bool hasExceeded(Addr addr) {
         return addr > endAddress();
     }
 
     /** Returns the fetch target number. */
     FTSeqNum ftNum() { return ftSeqNum; }
-
-    /** Set the predicted target of the exit branch. */
-    void setPredTarg(const PCStateBase &pred_pc) { set(predPC, pred_pc); }
-
-    /** Read the predicted target of the exit branch. */
-    const PCStateBase &readPredTarg() { return *predPC; }
 
     /** Read the start address PC */
     const PCStateBase &readStartPC() { return *startPC; }
@@ -140,11 +125,10 @@ class FetchTarget
 
 
     /** Check if the exit branch was predicted taken. */
-    bool predTaken() { return taken; }
+    bool predTaken() { return pred_taken; }
 
     /** Complete a fetch target with the exit instruction */
-    void finalize(const PCStateBase &exit_pc, InstSeqNum sn, bool _is_branch,
-                  bool pred_taken, const PCStateBase &pred_pc);
+    void finalize(const PCStateBase &exit_pc, bool taken);
 
     /** Print the fetch target for debugging. */
     std::string print();
@@ -177,8 +161,7 @@ class FTQ
     {
         Invalid,
         Valid,
-        Full,
-        Locked
+        Full
     };
 
     /** Per-thread FTQ status. */
@@ -234,16 +217,6 @@ public:
     /** Returns if the FTQ is in a val;id state and its save to consmume
      * fetch targets. */
     bool isValid(ThreadID tid);
-
-    /** Locks the fetch target queue for a given thread. Locking is different
-     * from invalidating in that the head/front fetch targets are still
-     * valid and accessible. However, all other FTs are invalid and the
-     * FTQ must be squashed to recover. */
-    void lock(ThreadID tid);
-
-    /** Check if the FTQ is locked. */
-    bool isLocked(ThreadID tid);
-
 
     /** Interates forward over all fetch targets in the FTQ from head/front to
      * tail/back and applies a given function. */

@@ -55,6 +55,7 @@
 #include "cpu/o3/cpu.hh"
 #include "cpu/o3/dyn_inst.hh"
 #include "cpu/o3/limits.hh"
+#include "cpu/pred/bpred_unit.hh"
 #include "debug/Activity.hh"
 #include "debug/Drain.hh"
 #include "debug/Fetch.hh"
@@ -120,6 +121,7 @@ Fetch::Fetch(CPU *_cpu, const BaseO3CPUParams &params)
         fetchStatus[i] = Idle;
         decoder[i] = nullptr;
         pc[i].reset(params.isa[0]->newPCState());
+        pcValid[i] = false;
         fetchOffset[i] = 0;
         macroop[i] = nullptr;
         delayedCommit[i] = false;
@@ -678,6 +680,8 @@ Fetch::doSquash(const PCStateBase &new_pc, const DynInstPtr squashInst,
     DPRINTF(Fetch, "[tid:%i] Squashing, setting PC to: %s.\n",
             tid, new_pc);
 
+    // 后续从 fetch target 中获取 pc
+    pcValid[tid] = false;
     set(pc[tid], new_pc);
     fetchOffset[tid] = 0;
     if (squashInst && squashInst->pcState().instAddr() == new_pc.instAddr() &&
@@ -1043,6 +1047,30 @@ Fetch::buildInst(ThreadID tid, StaticInstPtr staticInst,
 }
 
 void
+Fetch::transferBPHist(DynInstPtr &inst, FetchTargetPtr &ft)
+{
+    using namespace branch_prediction;
+    int hist_idx = 0;
+    while (!ft->bpu_history.empty())
+    {
+        auto* bp_hist = static_cast<BPredUnit::PredictorHistory*>(
+            ft->bpu_history.front());
+        Addr inst_start_pc = inst->pcState().instAddr();
+        Addr inst_end_pc = inst_start_pc + inst->staticInst->size();
+        assert(bp_hist->pc >= inst_start_pc);
+        if (bp_hist->pc < inst_end_pc)
+        {
+            inst->tmpBPHistory[hist_idx++] = bp_hist;
+            ft->bpu_history.pop_front();
+            // 在 bac 阶段预测时不知道 seq num，因此
+            // 推迟到 fetch 阶段补上
+            bp_hist->seqNum = inst->seqNum;
+        }
+    }
+    assert(hist_idx <= maxBPHistoryOneInst);
+}
+
+void
 Fetch::fetch(bool &status_change)
 {
     //////////////////////////////////////////
@@ -1075,6 +1103,21 @@ Fetch::fetch(bool &status_change)
 
     DPRINTF(Fetch, "Attempting to fetch from [tid:%i]\n", tid);
 
+    FetchTargetPtr curFT = ftq->readHead(tid);
+    if (true) { // #ifdef FDIP
+        assert(curFT);
+        if (pcValid[tid])
+        {
+            // fetch pc 完全来自于 fetch target
+            assert(curFT->inRange(pc[tid]->instAddr()));
+        }
+        else
+        {
+            set(pc[tid], curFT->readStartPC());
+            pcValid[tid] = true;
+        }
+    }
+
     // The current PC.
     PCStateBase &this_pc = *pc[tid];
 
@@ -1083,19 +1126,6 @@ Fetch::fetch(bool &status_change)
 
     bool inRom = isRomMicroPC(this_pc.microPC());
 
-    FetchTargetPtr curFT = ftq->readHead(tid);
-
-    if (true) { // #ifdef FDIP
-        assert(ftqReady(tid,status_change));
-
-        if (!curFT->inRange(this_pc.instAddr())) {
-            DPRINTF(Fetch, "[tid:%i] PC:%#x not within fetch target: %s\n",
-                            tid, this_pc, curFT->print());
-            bacResteer(this_pc, tid);
-            ++fetchStats.ftqStallCycles;
-            return;
-        }
-    }
 
     // If returning from the delay of a cache miss, then update the status
     // to running, otherwise do the cache access.  Possibly move this up
@@ -1112,21 +1142,21 @@ Fetch::fetch(bool &status_change)
         // If buffer is no longer valid or fetchAddr has moved to point
         // to the next cache block, AND we have no remaining ucode
         // from a macro-op, then start fetch from icache.
-        if (!(fetchBufferValid[tid] && ftqReady(tid, status_change) &&
+        if (!(fetchBufferValid[tid] &&
                     fetchBufferBlockPC == fetchBufferPC[tid]) && !inRom &&
                 !macroop[tid]) {
             DPRINTF(Fetch, "[tid:%i] Attempting to translate and read "
                     "instruction, starting at PC %s.\n", tid, this_pc);
 
             fetchCacheLine(fetchAddr, tid, this_pc.instAddr());
+            // 如果 ftq 为空的话，就没有 pc 来访问 cache line
+            assert(fetchStatus[tid] != FTQEmpty);
 
             if (fetchStatus[tid] == IcacheWaitResponse) {
                 cpu->fetchStats[tid]->icacheStallCycles++;
             }
             else if (fetchStatus[tid] == ItlbWait)
                 ++fetchStats.tlbCycles;
-            else if (fetchStatus[tid] == FTQEmpty)
-                ++fetchStats.ftqStallCycles;
             else
                 ++fetchStats.miscStallCycles;
             return;
@@ -1163,9 +1193,7 @@ Fetch::fetch(bool &status_change)
     DPRINTF(Fetch, "[tid:%i] Adding instructions to queue to "
             "decode.\n", tid);
 
-    // Need to keep track of whether or not a predicted branch
-    // ended this fetch block.
-    bool predictedBranch = false;
+    bool predictedBranch = curFT->predTaken();
 
     // Need to halt fetch if quiesce instruction detected
     bool quiesce = false;
@@ -1180,11 +1208,13 @@ Fetch::fetch(bool &status_change)
     // Keep issuing while fetchWidth is available and branch is not
     // predicted taken
     while (numInst < fetchWidth && fetchQueue[tid].size() < fetchQueueSize
-           && !predictedBranch && !quiesce) {
+           && !quiesce) {
+        // 取指时使用的一定是 valid fetch target
+        assert(ftq->isValid(tid));
 
         // For the decoupled front-end also check if the FTQ
         // and the fetch target are still valid.
-        if (true /*decoupledFrontEnd*/ && (!ftq->isValid(tid) || !curFT)) {
+        if (true /*decoupledFrontEnd*/ && !curFT) {
             break;
         }
         assert(!curFT || curFT->inRange(this_pc.instAddr()));
@@ -1195,6 +1225,9 @@ Fetch::fetch(bool &status_change)
         bool needMem = !inRom && !curMacroop && !dec_ptr->instReady();
         fetchAddr = (this_pc.instAddr() + pcOffset) & pc_mask;
         Addr fetchBufferBlockPC = fetchBufferAlignPC(fetchAddr);
+
+        // RISC-V 中没有 ROM upc
+        assert(!inRom);
 
         if (needMem) {
             // If buffer is no longer valid or fetchAddr has moved to point
@@ -1254,6 +1287,14 @@ Fetch::fetch(bool &status_change)
                 }
                 newMacro |= staticInst->isLastMicroop();
             }
+            assert(staticInst->size() == 2 || staticInst->size() == 4);
+
+            if (staticInst->isControl())
+            {
+                // 我们目前只考虑一条 macro 指令中仅可能最后一条 micro 指令是 branch
+                // 的情况
+                assert(!curMacroop || staticInst->isLastMicroop());
+            }
 
             DynInstPtr instruction = buildInst(
                     tid, staticInst, curMacroop, this_pc, *next_pc, true);
@@ -1271,19 +1312,20 @@ Fetch::fetch(bool &status_change)
 
             // If we're branching after this instruction, quit fetching
             // from the same block.
-            predictedBranch |= this_pc.branching();
+            // predictedBranch |= this_pc.branching();
+            // RISC-V 中译码时不会马上得到 branching 信息
+            assert(!this_pc.branching());
             // Get the next PC from the BAC stage.
-            predictedBranch |= bac->updatePC(instruction, *next_pc, curFT);
+            if (!curMacroop || staticInst->isLastMicroop())
+            {
+                transferBPHist(instruction, curFT);
+            }
 
             if (instruction->isControl()) {
                 cpu->fetchStats[tid]->numBranches++;
             }
-            if (predictedBranch) {
-                DPRINTF(Fetch, "Branch detected with PC = %s -> targ: %s, \n",
-                                this_pc, *next_pc);
-                ++fetchStats.predictedBranches;
-            }
 
+            instruction->staticInst->advancePC(*next_pc);
             newMacro |= this_pc.instAddr() != next_pc->instAddr();
 
             // Move to the next instruction, unless we have a branch.
@@ -1323,10 +1365,7 @@ Fetch::fetch(bool &status_change)
         inRom = isRomMicroPC(this_pc.microPC());
     }
 
-    if (predictedBranch) {
-        DPRINTF(Fetch, "[tid:%i] Done fetching, predicted branch "
-                "instruction encountered.\n", tid);
-    } else if (numInst >= fetchWidth) {
+    if (numInst >= fetchWidth) {
         DPRINTF(Fetch, "[tid:%i] Done fetching, reached fetch bandwidth "
                 "for this cycle.\n", tid);
     } else if (blkOffset >= fetchBufferSize) {
@@ -1337,13 +1376,30 @@ Fetch::fetch(bool &status_change)
                 "target.\n", tid);
     }
 
-   if (true /*decoupledFrontEnd*/ && !curFT) {
+    if (true /*decoupledFrontEnd*/ && !curFT)
+    {
         DPRINTF(Fetch, "Done with FT. Pop from FTQ.\n");
-        if (!ftq->updateHead(tid)) {
-            // The update was not successful. The BPU predicted something
-            // wrong. Squash the FTQ.
-            bacResteer(this_pc, tid);
+        ftq->updateHead(tid);
+        auto ft = ftq->readHead(tid);
+        // 可能存在的情况是，上一个 fetch target 完结的位置其实在一条
+        // 指令的中间，因此在预测为没有跳转的情况下，不能按照下一个 fetch
+        // target 的 start pc 来取指和译码
+        if (predictedBranch)
+        {
+            if (ft)
+            {
+                set(pc[tid], ft->readStartPC());
+                assert(pcValid[tid]);
+            }
+            else
+            {
+                pcValid[tid] = false;
+            }
         }
+    }
+    else
+    {
+        assert(curFT->inRange(this_pc.instAddr()));
     }
 
     macroop[tid] = curMacroop;
