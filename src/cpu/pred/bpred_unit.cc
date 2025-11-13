@@ -380,6 +380,10 @@ BPredUnit::commitBranch(ThreadID tid, PredictorHistory* &hist)
     if (!hist->btbHit)
     {
         stats.committedBTBMiss[tid][hist->type]++;
+        if (!hist->actuallyTaken)
+        {
+            stats.committedBTBMissNotTaken++;
+        }
     }
     if (!hist->btbHit && hist->mispredict)
     {
@@ -748,6 +752,8 @@ BPredUnit::BPredUnitStats::BPredUnitStats(BPredUnit *bp)
                "Number of conditional branches incorrect"),
       ADD_STAT(predTakenBTBMiss, statistics::units::Count::get(),
                "Number of branches predicted taken but missed in BTB"),
+      ADD_STAT(committedBTBMissNotTaken, statistics::units::Count::get(),
+               "Number of branches predicted not taken and missed in BTB"),
       ADD_STAT(BTBLookups, statistics::units::Count::get(),
                "Number of BTB lookups"),
       ADD_STAT(BTBUpdates, statistics::units::Count::get(),

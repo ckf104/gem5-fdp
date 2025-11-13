@@ -533,6 +533,7 @@ class BPredUnit : public SimObject
         statistics::Scalar condPredictedTaken;
         statistics::Scalar condIncorrect;
         statistics::Scalar predTakenBTBMiss;
+        statistics::Scalar committedBTBMissNotTaken;
 
         /** BTB stats. */
         statistics::Scalar BTBLookups;
