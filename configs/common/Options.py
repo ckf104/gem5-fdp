@@ -266,6 +266,18 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         help="type of cpu to run with",
     )
     parser.add_argument(
+        "--L1ICacheTagLatency",
+        default=2,
+        type=int,
+        help="Tag latency of L1 instruction cache",
+    )
+    parser.add_argument(
+        "--L1ICacheDataLatency",
+        default=2,
+        type=int,
+        help="Data latency of L1 instruction cache",
+    )
+    parser.add_argument(
         "--fetchToDecodeDelay",
         default=1,
         type=int,

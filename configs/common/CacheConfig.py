@@ -147,6 +147,9 @@ def config_cache(options, system):
             icache = icache_class(**_get_cache_opts("l1i", options))
             dcache = dcache_class(**_get_cache_opts("l1d", options))
 
+            icache.tag_latency = options.L1ICacheTagLatency
+            icache.data_latency = options.L1ICacheDataLatency
+
             # If we are using ISA.X86 or ISA.RISCV, we set walker caches.
             if ObjectList.cpu_list.get_isa(options.cpu_type) in [
                 ISA.RISCV,
