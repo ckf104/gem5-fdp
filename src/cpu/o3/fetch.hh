@@ -406,6 +406,8 @@ class Fetch
     static void transferBPHist(DynInstPtr &inst, FetchTargetPtr &ft);
 
   private:
+    DynInstPtr partialInst;
+
     /** Pointer to the O3CPU. */
     CPU *cpu;
 

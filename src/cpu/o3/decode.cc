@@ -64,6 +64,7 @@ namespace o3
 
 Decode::Decode(CPU *_cpu, const BaseO3CPUParams &params)
     : cpu(_cpu),
+      branchPred(params.branchPred),
       renameToDecodeDelay(params.renameToDecodeDelay),
       iewToDecodeDelay(params.iewToDecodeDelay),
       commitToDecodeDelay(params.commitToDecodeDelay),
@@ -637,6 +638,7 @@ Decode::pushTmpHistoryToBP(const DynInstPtr& dynInst)
     if (bp_history)
     {
         assert(br_type != enums::NoBranch);
+        assert(bp_history->btbHit);
         auto& hist_queue = branchPred->predHist[dynInst->threadNumber];
         if (!hist_queue.empty())
         {
@@ -848,7 +850,8 @@ Decode::decodeInsts(ThreadID tid)
             }
             else if (inst->isDirectCtrl())
             {
-                assert(taken_target == inst->branchTarget());
+                assert(taken_target->instAddr() ==
+                    inst->branchTarget()->instAddr());
             }
             else
             {

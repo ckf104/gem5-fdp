@@ -236,7 +236,7 @@ FTQ::readHead(ThreadID tid)
 bool
 FTQ::updateHead(ThreadID tid)
 {
-    assert(ftq[tid].empty());
+    assert(ftq[tid].front()->bpu_history.empty());
 
     ppFTQRemove->notify(ftq[tid].front());
     ftq[tid].pop_front();

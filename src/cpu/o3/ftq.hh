@@ -97,7 +97,7 @@ class FetchTarget
     Addr startAddress() { return startPC->instAddr(); }
 
     /* End address of the basic block */
-    Addr endAddress() { return (endPC) ? endPC->instAddr() : MaxAddr; }
+    Addr endAddress() { return endPC->instAddr(); }
 
     /* Fetch Target size (number of bytes) */
     unsigned size() { return endAddress() - startAddress(); }

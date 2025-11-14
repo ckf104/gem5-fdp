@@ -602,7 +602,7 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
 
         if (static_inst)
         {
-            next_pc->set(cur_pc.instAddr());
+            next_pc->set(search_addr);
             pred_taken = predict(tid, static_inst, curFT, *next_pc);
 
             // RISC-V 体系结构中一条指令只有至多一个 branch，并且该 branch 是最
@@ -667,7 +667,16 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
     stats.ftSizeDist.sample(search_addr - start_addr);
 
     // Finally set the BPU PC to the next FT in the next cycle
-    set(cur_pc, *next_pc);
+    if (pred_taken)
+    {
+        set(cur_pc, *next_pc);
+    }
+    else
+    {
+        // 因为这时候不知道下一条指令的位置，我们只能最保守地前进 pc
+        // next_pc 的值为 pc + 4，这可能导致跳过压缩指令
+        cur_pc.set(search_addr + minInstSize);
+    }
 
     // ftq->printFTQ(tid);
 }

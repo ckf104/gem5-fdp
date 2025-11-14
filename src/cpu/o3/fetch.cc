@@ -61,6 +61,7 @@
 #include "debug/Fetch.hh"
 #include "debug/O3CPU.hh"
 #include "debug/O3PipeView.hh"
+#include "debug/Squash.hh"
 #include "mem/packet.hh"
 #include "params/BaseO3CPU.hh"
 #include "sim/byteswap.hh"
@@ -716,6 +717,8 @@ Fetch::doSquash(const PCStateBase &new_pc, const DynInstPtr squashInst,
 
     // Empty fetch queue
     fetchQueue[tid].clear();
+    // 清理缓存的 partial inst
+    partialInst = nullptr;
 
     // microops are being squashed, it is not known wheather the
     // youngest non-squashed microop was  marked delayed commit
@@ -925,8 +928,18 @@ Fetch::checkSignalsAndUpdate(ThreadID tid)
 
     // Check squash signals from commit.
     if (fromCommit->commitInfo[tid].squash) {
-        DPRINTF(Fetch, "[tid:%i] Squashing from commit with PC = %s\n",
-                tid, *fromCommit->commitInfo[tid].pc);
+        // 仅关心 mispredict squash 相关的数据
+        if (fromCommit->commitInfo[tid].mispredictInst.get())
+        {
+            auto& mispred_inst = fromCommit->commitInfo[tid].mispredictInst;
+            DPRINTF(Squash, "[tid:%i] Squashing instructions from commit, "
+                "pc=0x%x, sn=%llu, inst %s, new pc=0x%x\n",tid,
+                mispred_inst->pcState().instAddr(),
+                fromCommit->commitInfo[tid].doneSeqNum,
+                mispred_inst->staticInst->getName(),
+                fromCommit->commitInfo[tid].pc->instAddr());
+        }
+
         // In any case, squash.
         squash(*fromCommit->commitInfo[tid].pc,
                fromCommit->commitInfo[tid].doneSeqNum,
@@ -938,9 +951,12 @@ Fetch::checkSignalsAndUpdate(ThreadID tid)
     if (fromDecode->decodeInfo[tid].squash
         && (fetchStatus[tid] != Squashing)) {
         // Squash unless we're already squashing
-
-        DPRINTF(Fetch, "[tid:%i] Squashing from decode with PC = %s\n",
-                tid, *fromDecode->decodeInfo[tid].nextPC);
+        DPRINTF(Squash, "[tid:%i] Squashing instructions from decode, "
+            "pc=0x%x, sn=%llu, inst %s, new pc=0x%x\n",tid,
+            fromDecode->decodeInfo[tid].mispredictInst->pcState().instAddr(),
+            fromDecode->decodeInfo[tid].doneSeqNum,
+            fromDecode->decodeInfo[tid].mispredictInst->staticInst->getName(),
+            fromDecode->decodeInfo[tid].nextPC->instAddr());
 
         squashFromDecode(*fromDecode->decodeInfo[tid].nextPC,
                             fromDecode->decodeInfo[tid].squashInst,
@@ -1050,7 +1066,6 @@ void
 Fetch::transferBPHist(DynInstPtr &inst, FetchTargetPtr &ft)
 {
     using namespace branch_prediction;
-    int hist_idx = 0;
     while (!ft->bpu_history.empty())
     {
         auto* bp_hist = static_cast<BPredUnit::PredictorHistory*>(
@@ -1060,14 +1075,25 @@ Fetch::transferBPHist(DynInstPtr &inst, FetchTargetPtr &ft)
         assert(bp_hist->pc >= inst_start_pc);
         if (bp_hist->pc < inst_end_pc)
         {
-            inst->tmpBPHistory[hist_idx++] = bp_hist;
+            // 针对 RISC-V 指令，只有 pc 和 pc + 2 处可能有
+            // 分支指令
+            assert(bp_hist->pc == inst_start_pc ||
+                bp_hist->pc == inst_start_pc + 2);
+            auto hist_idx = (bp_hist->pc - inst_start_pc) / 2;
+            assert(hist_idx < maxBPHistoryOneInst);
+            assert(!inst->tmpBPHistory[hist_idx]);
+            inst->tmpBPHistory[hist_idx] = bp_hist;
             ft->bpu_history.pop_front();
             // 在 bac 阶段预测时不知道 seq num，因此
             // 推迟到 fetch 阶段补上
             bp_hist->seqNum = inst->seqNum;
         }
+        // 否则说明该 branch history 不属于当前指令
+        else
+        {
+            break;
+        }
     }
-    assert(hist_idx <= maxBPHistoryOneInst);
 }
 
 void
@@ -1115,6 +1141,16 @@ Fetch::fetch(bool &status_change)
         {
             set(pc[tid], curFT->readStartPC());
             pcValid[tid] = true;
+        }
+        // 如果 partial inst 非空，那么先检查是否该 fetch target 中
+        // 包含 partial inst 的 bp history
+        if (partialInst)
+        {
+            assert(curFT->startAddress() + 2 == pc[tid]->instAddr());
+            transferBPHist(partialInst, curFT);
+            fetchQueue[tid].push_back(partialInst);
+            wroteToTimeBuffer = true;
+            partialInst = nullptr;
         }
     }
 
@@ -1342,6 +1378,17 @@ Fetch::fetch(bool &status_change)
             // Check if the PC exceed the fetch target.
             // The pointer is null in the non-decoupled case.
             if (curFT && !curFT->inRange(this_pc.instAddr())) {
+                // 如果 fetch target 的最后一条指令长度为 4，并且没有发生跳转
+                // 那么 pc + 2 处的 branch history 包含在下一个 fetch target
+                // 中，因此我们先缓存该指令，等 pc + 2 处的 branch history 送
+                // 过来之后再将该指令发往 decode stage
+                if (!curFT->predTaken() && staticInst->size() == 4 &&
+                    instruction->pcState().instAddr() == curFT->endAddress())
+                {
+                   assert(fetchQueue[tid].back() == instruction);
+                   partialInst = instruction;
+                   fetchQueue[tid].pop_back();
+                }
                 curFT = nullptr;
             }
 
