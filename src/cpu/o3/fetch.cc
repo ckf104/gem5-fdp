@@ -604,29 +604,28 @@ Fetch::predictNextPC(DynInstPtr& dynInst, PCStateBase &next_pc)
     bool pred_taken = false;
     auto inst = branchPred->BTBGetInst(tid, dynInst->pcState().instAddr());
     Addr pc_addr = next_pc.instAddr();
+    BPredUnit::PredictorHistory* bp_history = nullptr;
 
     if (inst)
     {
         auto br_type = getBranchType(inst);
         assert(br_type != enums::NoBranch);
-        BPredUnit::PredictorHistory* bp_history = nullptr;
         pred_taken = branchPred->predict(inst, dynInst->seqNum,
             next_pc, tid, bp_history);
         dynInst->tmpBPHistory[0] = bp_history;
-
-        if (!pred_taken && !compressed)
+    }
+    if (!pred_taken && !compressed)
+    {
+        next_pc.set(pc_addr + 2);
+        bp_history = nullptr;
+        inst = branchPred->BTBGetInst(tid, next_pc.instAddr());
+        if (inst)
         {
-            next_pc.set(pc_addr + 2);
-            bp_history = nullptr;
-            inst = branchPred->BTBGetInst(tid, next_pc.instAddr());
-            if (inst)
-            {
-                br_type = getBranchType(inst);
-                assert(br_type != enums::NoBranch);
-                pred_taken = branchPred->predict(inst, dynInst->seqNum,
-                    next_pc, tid, bp_history);
-                dynInst->tmpBPHistory[1] = bp_history;
-            }
+            auto br_type = getBranchType(inst);
+            assert(br_type != enums::NoBranch);
+            pred_taken = branchPred->predict(inst, dynInst->seqNum,
+                next_pc, tid, bp_history);
+            dynInst->tmpBPHistory[1] = bp_history;
         }
     }
     if (!pred_taken)
