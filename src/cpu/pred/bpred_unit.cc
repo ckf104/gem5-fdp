@@ -456,6 +456,18 @@ BPredUnit::commitBranch(ThreadID tid, PredictorHistory* &hist)
             stats.mispredictDueToPredictor[tid][hist->type]++;
         }
     }
+    if (!hist->btbHit)
+    {
+        stats.committedBTBMiss[tid][hist->type]++;
+        if (!hist->actuallyTaken)
+        {
+            stats.committedBTBMissNotTaken++;
+        }
+    }
+    if (!hist->btbHit && hist->mispredict)
+    {
+        stats.committedBTBMissAndMispredicted[tid][hist->type]++;
+    }
 
 
     DPRINTF(Branch, "Commit branch: sn:%llu, PC:%#x %s, "
@@ -747,6 +759,12 @@ BPredUnit::BPredUnitStats::BPredUnitStats(BPredUnit *bp)
               "Number of branches that got redirected after decode."),
       ADD_STAT(committed, statistics::units::Count::get(),
               "Number of branches finally committed "),
+      ADD_STAT(committedBTBMiss, statistics::units::Count::get(),
+              "Number of committed branches that were btb missed"),
+      ADD_STAT(committedBTBMissAndMispredicted,
+            statistics::units::Count::get(),
+              "Number of committed branches that were btb missed"
+              "and mispredicted."),
       ADD_STAT(mispredicted, statistics::units::Count::get(),
               "Number of committed branches that were mispredicted."),
       ADD_STAT(mispredictDueToPredictor, statistics::units::Count::get(),
@@ -768,6 +786,8 @@ BPredUnit::BPredUnitStats::BPredUnitStats(BPredUnit *bp)
                "Number of conditional branches incorrect"),
       ADD_STAT(predTakenBTBMiss, statistics::units::Count::get(),
                "Number of branches predicted taken but missed in BTB"),
+      ADD_STAT(committedBTBMissNotTaken, statistics::units::Count::get(),
+               "Number of branches predicted not taken and missed in BTB"),
       ADD_STAT(BTBLookups, statistics::units::Count::get(),
                "Number of BTB lookups"),
       ADD_STAT(BTBUpdates, statistics::units::Count::get(),
@@ -815,6 +835,16 @@ BPredUnit::BPredUnitStats::BPredUnitStats(BPredUnit *bp)
         .init(bp->numThreads, enums::Num_BranchType)
         .flags(total | pdf);
     committed.ysubnames(enums::BranchTypeStrings);
+
+    committedBTBMiss
+        .init(bp->numThreads, enums::Num_BranchType)
+        .flags(total | pdf);
+    committedBTBMiss.ysubnames(enums::BranchTypeStrings);
+
+    committedBTBMissAndMispredicted
+        .init(bp->numThreads, enums::Num_BranchType)
+        .flags(total | pdf);
+    committedBTBMissAndMispredicted.ysubnames(enums::BranchTypeStrings);
 
     mispredicted
         .init(bp->numThreads, enums::Num_BranchType)

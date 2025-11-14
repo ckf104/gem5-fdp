@@ -526,6 +526,8 @@ class BPredUnit : public SimObject
         statistics::Vector2d corrected;
         statistics::Vector2d earlyResteers;
         statistics::Vector2d committed;
+        statistics::Vector2d committedBTBMiss;
+        statistics::Vector2d committedBTBMissAndMispredicted;
         statistics::Vector2d mispredicted;
         statistics::Vector2d mispredictDueToPredictor;
         statistics::Vector2d mispredictDueToBTBMiss;
@@ -539,6 +541,7 @@ class BPredUnit : public SimObject
         statistics::Scalar condPredictedTaken;
         statistics::Scalar condIncorrect;
         statistics::Scalar predTakenBTBMiss;
+        statistics::Scalar committedBTBMissNotTaken;
 
         /** BTB stats. */
         statistics::Scalar BTBLookups;
