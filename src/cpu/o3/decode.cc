@@ -627,6 +627,10 @@ void
 Decode::pushTmpHistoryToBP(const DynInstPtr& dynInst)
 {
     using namespace gem5::branch_prediction;
+    if (dynInst->staticInst == nopStaticInstPtr)
+    {
+        return;
+    }
 
     bool taken = false;
     auto br_type = getBranchType(dynInst->staticInst);
