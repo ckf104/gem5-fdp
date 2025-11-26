@@ -224,6 +224,7 @@ for cpu in system.cpu:
     cpu.fetchToDecodeDelay = args.fetchToDecodeDelay
     cpu.fetchWidth = args.fetchWidth
     cpu.decodeWidth = args.decodeWidth
+    cpu.warmupInst = args.warmup_before_stats
 
 if ObjectList.is_kvm_cpu(CPUClass) or ObjectList.is_kvm_cpu(FutureClass):
     if buildEnv["USE_X86_ISA"]:

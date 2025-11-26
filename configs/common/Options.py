@@ -736,6 +736,12 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         default=None,
         help="Override vendor string returned by CPUID instruction in X86.",
     )
+    parser.add_argument(
+        "--warmup-before-stats",
+        type=int,
+        default=0,
+        help="Number of instructions to warmup before starting stats.",
+    )
 
 
 def addSEOptions(parser):

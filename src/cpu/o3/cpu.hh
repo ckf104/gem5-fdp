@@ -388,6 +388,9 @@ class CPU : public BaseCPU
     int instcount;
 #endif
 
+    uint64_t warmupInst = 0;
+    bool warmup = false;
+
     /** List of all the instructions in flight. */
     std::list<DynInstPtr> instList;
 
