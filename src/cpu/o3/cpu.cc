@@ -71,6 +71,7 @@ namespace o3
 
 CPU::CPU(const BaseO3CPUParams &params)
     : BaseCPU(params),
+      warmupInst(params.warmupInst),
       mmu(params.mmu),
       tickEvent([this]{ tick(); }, "O3CPU tick",
                 false, Event::CPU_Tick_Pri),
@@ -1166,6 +1167,14 @@ CPU::instDone(ThreadID tid, const DynInstPtr &inst)
 
         // Check for instruction-count-based events.
         thread[tid]->comInstEventQueue.serviceEvents(thread[tid]->numInst);
+        if (warmupInst > 0 && !warmup)
+        {
+            if (thread[tid]->numInst >= warmupInst)
+            {
+                warmup = true;
+                statistics::schedStatEvent(false, true);
+            }
+        }
     }
     thread[tid]->numOp++;
     thread[tid]->threadStats.numOps++;
