@@ -577,26 +577,27 @@ Fetch::predictNextPC(DynInstPtr& dynInst, PCStateBase &next_pc)
                 tid, dynInst->seqNum, dynInst->pcState().instAddr(),
                 *ipred_target);
         }
-        else
-        {
-            auto btb_target = branchPred->btb->lookup(tid,
-                dynInst->pcState().instAddr());
-            if (btb_target)
-            {
-                dynInst->setPredTarg(*btb_target);
-                hit = true;
-                DPRINTF(FetchPredict, "[tid:%i] [sn:%llu] at PC %#x "
-                    "predicted to go to %s from BTB\n",
-                    tid, dynInst->seqNum, dynInst->pcState().instAddr(),
-                    *btb_target);
-            }
-        }
     }
     // 如果没有命中或者 inst 不是 indirect jump 或者 return 指令
     if (!hit)
     {
-        dynInst->setPredTarg(dynInst->pcState());
-        dynInst->staticInst->advancePC(*dynInst->predPC);
+        auto btb_target = branchPred->btb->lookup(tid,
+            dynInst->pcState().instAddr());
+        // return 指令也是 indirect control
+        if (btb_target && dynInst->staticInst->isIndirectCtrl())
+        {
+            dynInst->setPredTarg(*btb_target);
+            hit = true;
+            DPRINTF(FetchPredict, "[tid:%i] [sn:%llu] at PC %#x "
+                "predicted to go to %s from BTB\n",
+                tid, dynInst->seqNum, dynInst->pcState().instAddr(),
+                *btb_target);
+        }
+        else
+        {
+            dynInst->setPredTarg(dynInst->pcState());
+            dynInst->staticInst->advancePC(*dynInst->predPC);
+        }
     }
 
     // 不依赖指令信息预测 pc，这个预测会改变分支预测器内部状态
