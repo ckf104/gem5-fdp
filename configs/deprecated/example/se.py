@@ -220,7 +220,7 @@ if args.elastic_trace_en:
 # frequency.
 for cpu in system.cpu:
     cpu.clk_domain = system.cpu_clk_domain
-    cpu.fetchBufferSize = 16
+    cpu.fetchBufferSize = args.fetchBufferSize
     cpu.fetchToDecodeDelay = args.fetchToDecodeDelay
     cpu.fetchWidth = args.fetchWidth
     cpu.decodeWidth = args.decodeWidth

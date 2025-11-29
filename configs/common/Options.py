@@ -742,6 +742,9 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         default=0,
         help="Number of instructions to warmup before starting stats.",
     )
+    parser.add_argument(
+        "--fetchBfferSize", type=int, default=8, help="Size of fetch buffer"
+    )
 
 
 def addSEOptions(parser):
