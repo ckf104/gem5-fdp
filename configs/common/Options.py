@@ -808,6 +808,15 @@ def addSEOptions(parser):
         action="store_true",
         help="Wait for remote GDB to connect.",
     )
+    parser.add_argument(
+        "--fetchBfferSize", type=int, default=8, help="Size of fetch buffer"
+    )
+    parser.add_argument(
+        "--fetchTargetWidth",
+        type=int,
+        default=32,
+        help="Size of fetch target packet",
+    )
 
 
 def addFSOptions(parser):
