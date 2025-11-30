@@ -66,6 +66,7 @@ BAC::BAC(CPU *_cpu, const BaseO3CPUParams &params)
     : cpu(_cpu),
       bpu(params.branchPred),
       ftq(nullptr),
+      ftqSampleFreq(params.FTQSampleFreq),
       wroteToTimeBuffer(false),
       fetchToBacDelay(params.fetchToBacDelay),
       decodeToFetchDelay(params.decodeToFetchDelay),
@@ -83,6 +84,8 @@ BAC::BAC(CPU *_cpu, const BaseO3CPUParams &params)
         bacPC[i].reset(params.isa[0]->newPCState());
         stalls[i] = {false, false, false};
     }
+
+    stats.ftqSize.init(0, params.numFTQEntries, 1).flags(statistics::pdf);
 
     assert(bpu!=nullptr);
 }
@@ -488,6 +491,16 @@ BAC::squash(const PCStateBase &new_pc, ThreadID tid)
 void
 BAC::tick()
 {
+    if (tickCnt >= ftqSampleFreq)
+    {
+        tickCnt = 0;
+        stats.ftqSize.sample(ftq->size(0));
+    }
+    else
+    {
+        tickCnt++;
+    }
+
     bool activity = false;
     bool status_change = false;
 
@@ -742,7 +755,9 @@ BAC::BACStats::BACStats(o3::CPU *cpu, BAC *bac)
     ADD_STAT(multiBranchInst, statistics::units::Count::get(),
             "Number branches because its not the last branch."),
     ADD_STAT(ftSizeDist, statistics::units::Count::get(),
-             "Number of bytes per fetch target")
+             "Number of bytes per fetch target"),
+    ADD_STAT(ftqSize, statistics::units::Count::get(),
+             "Number of fetch targets in the FTQ")
 {
     using namespace statistics;
 

@@ -238,4 +238,5 @@ class BaseO3CPU(BaseCPU):
     )
     fetchToBacDelay = Param.Cycles(1, "Fetch to Branch address calc. delay")
     bacToFetchDelay = Param.Cycles(1, "Branch address calc. to fetch delay")
+    FTQSampleFreq = Param.Unsigned(100, "Frequency of sampling the FTQ Size")
     # decoupledFrontEnd = Param.Bool(False, "Enables the decoupled front-end")

@@ -817,6 +817,12 @@ def addSEOptions(parser):
         default=32,
         help="Size of fetch target packet",
     )
+    parser.add_argument(
+        "--FTQSampleFreq",
+        type=int,
+        default=100,
+        help="Frequency of sampling the FTQ Size",
+    )
 
 
 def addFSOptions(parser):

@@ -355,7 +355,8 @@ class BAC
     /** Number of threads. */
     const ThreadID numThreads;
 
-
+    uint32_t tickCnt = 0;
+    uint32_t ftqSampleFreq;
 
   protected:
     struct BACStats : public statistics::Group
@@ -399,6 +400,7 @@ class BAC
 
       /** Distribution of number of bytes per fetch target. */
       statistics::Distribution ftSizeDist;
+      statistics::Distribution ftqSize;
 
     } stats;
     /** @} */
