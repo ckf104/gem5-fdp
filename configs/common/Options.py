@@ -809,7 +809,7 @@ def addSEOptions(parser):
         help="Wait for remote GDB to connect.",
     )
     parser.add_argument(
-        "--fetchBfferSize", type=int, default=8, help="Size of fetch buffer"
+        "--fetchBufferSize", type=int, default=8, help="Size of fetch buffer"
     )
     parser.add_argument(
         "--fetchTargetWidth",
