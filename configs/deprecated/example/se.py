@@ -302,6 +302,9 @@ else:
     MemConfig.config_mem(args, system)
     config_filesystem(system, args)
 
+for cpu in system.cpu:
+    cpu.icache.prefetcher.registerMMU(cpu.mmu)
+
 system.workload = SEWorkload.init_compatible(mp0_path)
 
 if args.wait_gdb:
