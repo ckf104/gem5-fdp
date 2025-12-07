@@ -732,7 +732,7 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
     )
     parser.add_argument(
         "--alignFetchTarget",
-        type=bool,
+        action="store_true",
         default=False,
         help="Align fetch target to the fetch width",
     )
