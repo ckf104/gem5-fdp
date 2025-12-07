@@ -223,6 +223,9 @@ class BaseO3CPU(BaseCPU):
     )
 
     # Decoupled front end
+    alignFetchTarget = Param.Bool(
+        False, "Align fetch target to the fetch width"
+    )
     numFTQEntries = Param.Unsigned(
         8, "Number of entries in the Fetch target queue."
     )

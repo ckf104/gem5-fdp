@@ -122,6 +122,9 @@ class BAC
     /** Per-thread status. */
     ThreadStatus bacStatus[MaxThreads];
 
+    bool alignFetchTarget;
+    uint32_t fetchBufferSize;
+
   public:
     /** BAC constructor. */
     BAC(CPU *_cpu, const BaseO3CPUParams &params);

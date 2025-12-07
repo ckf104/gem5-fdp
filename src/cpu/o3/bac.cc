@@ -64,6 +64,8 @@ namespace o3
 
 BAC::BAC(CPU *_cpu, const BaseO3CPUParams &params)
     : cpu(_cpu),
+      alignFetchTarget(params.alignFetchTarget),
+      fetchBufferSize(params.fetchBufferSize),
       bpu(params.branchPred),
       ftq(nullptr),
       ftqSampleFreq(params.FTQSampleFreq),
@@ -598,6 +600,11 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
     PCStateBase &cur_pc = *bacPC[tid];
     Addr search_addr = cur_pc.instAddr();
     Addr start_addr = search_addr;
+    Addr aligned_addr = start_addr;
+    if (alignFetchTarget)
+    {
+        aligned_addr = aligned_addr - (aligned_addr % fetchBufferSize);
+    }
 
     // In each cycles a new fetch target is created starting with
     // the current PC.
@@ -630,7 +637,7 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
 
         // If its not a branch check if the maximum search width is reached.
         // If yes stop searching.
-        if ((search_addr - start_addr) >= fetchTargetWidth) {
+        if ((search_addr - aligned_addr) >= fetchTargetWidth) {
             break;
         }
 

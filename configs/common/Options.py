@@ -730,6 +730,12 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         default=0,
         help="Number of instructions to warmup before starting stats.",
     )
+    parser.add_argument(
+        "--alignFetchTarget",
+        type=bool,
+        default=False,
+        help="Align fetch target to the fetch width",
+    )
 
 
 def addSEOptions(parser):
