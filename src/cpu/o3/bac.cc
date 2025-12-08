@@ -637,7 +637,7 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
 
         // If its not a branch check if the maximum search width is reached.
         // If yes stop searching.
-        if ((search_addr - aligned_addr) >= fetchTargetWidth) {
+        if ((search_addr - aligned_addr + minInstSize) >= fetchTargetWidth) {
             break;
         }
 
@@ -684,7 +684,7 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
             tid, curFT->ftNum(), (search_addr - start_addr),
             branch_found, *next_pc);
 
-    stats.ftSizeDist.sample(search_addr - start_addr);
+    stats.ftSizeDist.sample(search_addr - start_addr + minInstSize);
 
     // Finally set the BPU PC to the next FT in the next cycle
     if (pred_taken)
