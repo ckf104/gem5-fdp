@@ -228,6 +228,7 @@ for cpu in system.cpu:
     cpu.warmupInst = args.warmup_before_stats
     cpu.FTQSampleFreq = args.FTQSampleFreq
     cpu.alignFetchTarget = args.alignFetchTarget
+    cpu.fetchMultiFT = args.fetchMultiFT
 
 if ObjectList.is_kvm_cpu(CPUClass) or ObjectList.is_kvm_cpu(FutureClass):
     if buildEnv["USE_X86_ISA"]:

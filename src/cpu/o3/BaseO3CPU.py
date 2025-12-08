@@ -226,6 +226,9 @@ class BaseO3CPU(BaseCPU):
     alignFetchTarget = Param.Bool(
         False, "Align fetch target to the fetch width"
     )
+    fetchMultiFT = Param.Bool(
+        False, "Enable fetching multiple fetch targets per cycle"
+    )
     numFTQEntries = Param.Unsigned(
         8, "Number of entries in the Fetch target queue."
     )

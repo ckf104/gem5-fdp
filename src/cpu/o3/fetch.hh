@@ -460,6 +460,8 @@ class Fetch
      */
     bool wroteToTimeBuffer;
 
+    bool fetchMultiFT;
+
     /** Tracks how many instructions has been fetched this cycle. */
     int numInst;
 

@@ -85,6 +85,7 @@ Fetch::Fetch(CPU *_cpu, const BaseO3CPUParams &params)
     : fetchPolicy(params.smtFetchPolicy),
       cpu(_cpu),
       bac(nullptr), ftq(nullptr),
+      fetchMultiFT(params.fetchMultiFT),
       // decoupledFrontEnd(params.decoupledFrontEnd),
       decodeToFetchDelay(params.decodeToFetchDelay),
       renameToFetchDelay(params.renameToFetchDelay),
@@ -1378,18 +1379,29 @@ Fetch::fetch(bool &status_change)
             // Check if the PC exceed the fetch target.
             // The pointer is null in the non-decoupled case.
             if (curFT && !curFT->inRange(this_pc.instAddr())) {
+                // 如果允许一个周期看到多个 fetch target 的话
+                if (fetchMultiFT && !curFT->predTaken() && ftq->size(tid) > 1)
+                {
+                    ftq->updateHead(tid);
+                    curFT = ftq->readHead(tid);
+                    transferBPHist(instruction, curFT);
+                    assert(curFT->inRange(this_pc.instAddr()));
+                }
                 // 如果 fetch target 的最后一条指令长度为 4，并且没有发生跳转
                 // 那么 pc + 2 处的 branch history 包含在下一个 fetch target
                 // 中，因此我们先缓存该指令，等 pc + 2 处的 branch history 送
                 // 过来之后再将该指令发往 decode stage
-                if (!curFT->predTaken() && staticInst->size() == 4 &&
+                else if (!curFT->predTaken() && staticInst->size() == 4 &&
                     instruction->pcState().instAddr() == curFT->endAddress())
                 {
                    assert(fetchQueue[tid].back() == instruction);
                    partialInst = instruction;
                    fetchQueue[tid].pop_back();
                 }
-                curFT = nullptr;
+                else
+                {
+                    curFT = nullptr;
+                }
             }
 
             if (instruction->isQuiesce()) {

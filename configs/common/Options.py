@@ -736,6 +736,12 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         default=False,
         help="Align fetch target to the fetch width",
     )
+    parser.add_argument(
+        "--fetchMultiFT",
+        action="store_true",
+        default=False,
+        help="Enable fetching multiple fetch targets per cycle",
+    )
 
 
 def addSEOptions(parser):
