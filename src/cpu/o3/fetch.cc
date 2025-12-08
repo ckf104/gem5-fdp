@@ -1397,6 +1397,7 @@ Fetch::fetch(bool &status_change)
                    assert(fetchQueue[tid].back() == instruction);
                    partialInst = instruction;
                    fetchQueue[tid].pop_back();
+                   curFT = nullptr;
                 }
                 else
                 {
