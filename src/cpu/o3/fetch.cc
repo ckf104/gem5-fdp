@@ -1385,6 +1385,7 @@ Fetch::fetch(bool &status_change)
                     ftq->updateHead(tid);
                     curFT = ftq->readHead(tid);
                     transferBPHist(instruction, curFT);
+                    predictedBranch = curFT->predTaken();
                     assert(curFT->inRange(this_pc.instAddr()));
                 }
                 // 如果 fetch target 的最后一条指令长度为 4，并且没有发生跳转
