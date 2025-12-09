@@ -66,8 +66,13 @@ FetchDirectedPrefetcher::FetchDirectedPrefetcher(
 void
 FetchDirectedPrefetcher::notifyFTQInsert(const o3::FetchTargetPtr& ft)
 {
-    Addr blkAddr = blockAddress(ft->startAddress());
-    notifyPfAddr(blkAddr, true);
+    Addr blkAddrStart = blockAddress(ft->startAddress());
+    Addr blkAddrEnd = blockAddress(ft->endAddress());
+    for (Addr blkAddr = blkAddrStart; blkAddr <= blkAddrEnd;
+                                    blkAddr += blkSize)
+    {
+        notifyPfAddr(blkAddr, true);
+    }
 }
 
 
