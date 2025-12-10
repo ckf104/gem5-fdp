@@ -306,6 +306,7 @@ else:
 
 for cpu in system.cpu:
     cpu.icache.prefetcher.registerMMU(cpu.mmu)
+    cpu.icache.prefetcher.disableMultiPrefetch = args.disableMultiPrefetch
 
 system.workload = SEWorkload.init_compatible(mp0_path)
 

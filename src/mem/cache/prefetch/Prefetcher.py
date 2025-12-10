@@ -742,3 +742,7 @@ class FetchDirectedPrefetcher(BasePrefetcher):
         False,
         "Perfrom functional translations instead of timing (for testing)",
     )
+    disableMultiPrefetch = Param.Bool(
+        False,
+        "issue multiple prefetches per FT",
+    )

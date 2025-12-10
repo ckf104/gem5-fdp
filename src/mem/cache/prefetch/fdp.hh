@@ -99,6 +99,8 @@ class FetchDirectedPrefetcher : public Base
     /** Probe the cache before a prefetch gets inserted into the PFQ*/
     const bool cacheSnoop;
 
+    const bool multiPrefetch;
+
     /** The prefetch queue entry objects */
     struct PFQEntry
     {

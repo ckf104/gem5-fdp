@@ -742,6 +742,12 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         default=False,
         help="Enable fetching multiple fetch targets per cycle",
     )
+    parser.add_argument(
+        "--disableMultiPrefetch",
+        action="store_true",
+        default=False,
+        help="Enable multiple prefetches per FT",
+    )
 
 
 def addSEOptions(parser):

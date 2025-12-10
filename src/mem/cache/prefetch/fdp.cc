@@ -56,6 +56,7 @@ FetchDirectedPrefetcher::FetchDirectedPrefetcher(
                                 const FetchDirectedPrefetcherParams &p)
     : Base(p),
       cpu(p.cpu),
+      multiPrefetch(!p.disableMultiPrefetch),
       transFunctional(p.translate_functional),
       latency(cyclesToTicks(p.latency)), cacheSnoop(true),
       stats(this)
@@ -68,10 +69,17 @@ FetchDirectedPrefetcher::notifyFTQInsert(const o3::FetchTargetPtr& ft)
 {
     Addr blkAddrStart = blockAddress(ft->startAddress());
     Addr blkAddrEnd = blockAddress(ft->endAddress());
-    for (Addr blkAddr = blkAddrStart; blkAddr <= blkAddrEnd;
-                                    blkAddr += blkSize)
+    if (multiPrefetch)
     {
-        notifyPfAddr(blkAddr, true);
+        for (Addr blkAddr = blkAddrStart; blkAddr <= blkAddrEnd;
+                                        blkAddr += blkSize)
+        {
+            notifyPfAddr(blkAddr, true);
+        }
+    }
+    else
+    {
+        notifyPfAddr(blkAddrStart, true);
     }
 }
 
