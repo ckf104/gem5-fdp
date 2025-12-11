@@ -49,6 +49,7 @@
 #include "debug/Activity.hh"
 #include "debug/Decode.hh"
 #include "debug/O3PipeView.hh"
+#include "enums/BranchType.hh"
 #include "params/BaseO3CPU.hh"
 #include "sim/full_system.hh"
 
@@ -711,12 +712,24 @@ Decode::checkInstBP(const DynInstPtr& dynInst, PCStateBase& taken_target)
 
     // flush 的原因可能是 btb mismatch，或者 pred taken 预测的地址不对
     // btb mismatch
-    if (bp1_valid != bp1_should_valid || bp2_valid != bp2_should_valid)
+    if (bp2_valid != bp2_should_valid)
     {
         mis_match = true;
     }
+    else if (bp1_valid != bp1_should_valid)
+    {
+        if (branchPred->takenOnlyHistory && br_type == enums::DirectCond)
+        {
+            // btb miss conditional branch，认为是 not taken，不视为 mis match
+        }
+        else
+        {
+            mis_match = true;
+        }
+    }
     else if (bp1_valid || bp2_valid)
     {
+        // bp history 的位置正确，检查 branch type 是否匹配
         BPredUnit::PredictorHistory* bp_hist = nullptr;
         if (bp1_valid)
         {
@@ -736,6 +749,10 @@ Decode::checkInstBP(const DynInstPtr& dynInst, PCStateBase& taken_target)
         }
         taken = bp_hist->condPred;
         bp_target = bp_hist->target->instAddr();
+    }
+    else
+    {
+        // 说明是非 branch 指令，并且 bp history 为空，不需要处理
     }
 
     // 对于 pc 相对跳转的指令，我们可以在译码阶段拿到真实的跳转目标地址

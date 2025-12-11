@@ -212,6 +212,8 @@ class BAC
     /** Check the backward signals that update the BPU. */
     bool checkAndUpdateBPUSignals(ThreadID tid);
 
+    void dealBTBMissBranch(const DynInstPtr& mis_inst,
+        const PCStateBase &target);
 
   private:
 
@@ -383,6 +385,8 @@ class BAC
       statistics::Scalar predTakenBranches;
       /** Total number of fetched branches. */
       statistics::Scalar branchesNotLastuOp;
+      /** BTB miss，但是 tage 预测正确的 branch 数目 */
+      statistics::Scalar btbMissTageCorrect;
 
       /** Stat for total number of misspredicted instructions. */
       statistics::Scalar branchMisspredict;

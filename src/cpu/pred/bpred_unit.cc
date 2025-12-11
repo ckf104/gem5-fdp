@@ -64,6 +64,7 @@ BPredUnit::BPredUnit(const Params &params)
       btb(params.btb),
       ras(params.ras),
       iPred(params.indirectBranchPred),
+      takenOnlyHistory(params.takenOnlyHistory),
       stats(this)
 {
 }
@@ -595,7 +596,12 @@ BPredUnit::squash(const InstSeqNum &squashed_sn,
     if (!pred_hist.empty()) {
 
         PredictorHistory* const hist = pred_hist.front();
-        assert(hist->seqNum == squashed_sn);
+        assert(hist->seqNum <= squashed_sn);
+        // btb miss cond branch 在 squash 时还没有对应的 bp history
+        if (hist->seqNum != squashed_sn)
+        {
+            return;
+        }
         assert(hist->hist_id == maxHistId);
 
         DPRINTF(Branch, "[tid:%i] [squash sn:%llu] Mispredicted: %s, PC:%#x\n",

@@ -292,6 +292,32 @@ BAC::updateBACStatus()
     _status = Inactive;
 }
 
+void
+BAC::dealBTBMissBranch(const DynInstPtr& mis_inst, const PCStateBase &target)
+{
+    auto tid = mis_inst->threadNumber;
+    if (!bpu->predHist[tid].empty())
+    {
+        assert(bpu->predHist[tid].front()->seqNum <
+               mis_inst->seqNum);
+    }
+    auto br_type = getBranchType(mis_inst->staticInst);
+    assert(br_type == enums::DirectCond);
+    assert(mis_inst->isExecuted());
+
+    std::unique_ptr<PCStateBase> next_pc(mis_inst->pcState().clone());
+    auto taken = bpu->predict(mis_inst->staticInst, mis_inst->seqNum,
+            *next_pc, tid);
+    // btb miss，因此必然预测为 not taken
+    assert(!taken);
+    auto pred = bpu->predHist[tid].front()->condPred;
+    if (pred)
+    {
+        // 虽然 btb miss，但是 tage 依然预测正确了
+        stats.btbMissTageCorrect++;
+    }
+    bpu->squash(mis_inst->seqNum, target, true, tid, true);
+}
 
 bool
 BAC::checkAndUpdateBPUSignals(ThreadID tid)
@@ -313,9 +339,22 @@ BAC::checkAndUpdateBPUSignals(ThreadID tid)
         if (fromCommit->commitInfo[tid].mispredictInst &&
             fromCommit->commitInfo[tid].mispredictInst->isControl()) {
 
+            auto& mis_inst = fromCommit->commitInfo[tid].mispredictInst;
+            assert(mis_inst->seqNum ==
+                fromCommit->commitInfo[tid].doneSeqNum);
             bpu->squash(fromCommit->commitInfo[tid].doneSeqNum,
                         *fromCommit->commitInfo[tid].pc,
                         fromCommit->commitInfo[tid].branchTaken, tid, true);
+            if (bpu->predHist[tid].empty() || bpu->predHist[tid].front()->
+                seqNum != mis_inst->seqNum) {
+                    // 说明是 btb miss cond branch
+                    assert(fromCommit->commitInfo[tid].doneSeqNum ==
+                            mis_inst->seqNum);
+                    assert(fromCommit->commitInfo[tid].branchTaken);
+                    dealBTBMissBranch(mis_inst,
+                                      *fromCommit->commitInfo[tid].pc);
+
+                }
             stats.branchMisspredict++;
             stats.squashBranchCommit++;
         } else {
@@ -745,6 +784,9 @@ BAC::BACStats::BACStats(o3::CPU *cpu, BAC *bac)
     ADD_STAT(branchesNotLastuOp, statistics::units::Count::get(),
              "Number of branches that fetch encountered which are not the "
              "last uOp within a macrooperation. Jump to itself."),
+    ADD_STAT(btbMissTageCorrect, statistics::units::Count::get(),
+             "Number of BTB miss branches where the tage predictor predicted "
+             "correctly."),
     ADD_STAT(branchMisspredict, statistics::units::Count::get(),
             "Number of branches that BAC has predicted taken"),
     ADD_STAT(noBranchMisspredict, statistics::units::Count::get(),

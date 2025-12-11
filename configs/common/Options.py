@@ -748,6 +748,12 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         default=False,
         help="Enable multiple prefetches per FT",
     )
+    parser.add_argument(
+        "--takenOnlyHist",
+        action="store_true",
+        default=False,
+        help="Use taken only history for branch predictor",
+    )
 
 
 def addSEOptions(parser):

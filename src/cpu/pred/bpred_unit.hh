@@ -492,6 +492,8 @@ class BPredUnit : public SimObject
      * Low-end CPUs predecoding might be used to identify branches. */
     const bool requiresBTBHit;
 
+    const bool takenOnlyHistory;
+
     /** Number of bits to shift instructions by for predictor addresses. */
     const unsigned instShiftAmt;
 

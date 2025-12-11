@@ -270,6 +270,7 @@ for i in range(np):
         cpu.branchPred.btb.numEntries = args.btbNumEntries
         cpu.branchPred.btb.associativity = args.btbAssociativity
         cpu.branchPred.btb.tagBits = args.btbTagBits
+        cpu.branchPred.takenOnlyHistory = args.takenOnlyHist
 
     if args.indirect_bp_type:
         indirectBPClass = ObjectList.indirect_bp_list.get(
