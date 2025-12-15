@@ -49,6 +49,7 @@
 #include "debug/Activity.hh"
 #include "debug/Decode.hh"
 #include "debug/O3PipeView.hh"
+#include "debug/Special.hh"
 #include "enums/BranchType.hh"
 #include "params/BaseO3CPU.hh"
 #include "sim/full_system.hh"
@@ -694,6 +695,22 @@ Decode::checkInstBP(const DynInstPtr& dynInst, PCStateBase& taken_target)
         assert(dynInst->tmpBPHistory[0] == nullptr);
         assert(dynInst->tmpBPHistory[1] == nullptr);
         return false;
+    }
+    if (dynInst->tmpBPHistory[0])
+    {
+        DPRINTF(Special, "decode predict, inst: %s, pc: %lx, taken: %d\n",
+                dynInst->staticInst->getName(),
+                dynInst->pcState().instAddr(),
+                static_cast<BPredUnit::PredictorHistory*>(
+                    dynInst->tmpBPHistory[0])->predTaken);
+    }
+    if (dynInst->tmpBPHistory[1])
+    {
+        DPRINTF(Special, "decode predict 2, inst: %s, pc: %lx, taken: %d\n",
+                dynInst->staticInst->getName(),
+                dynInst->pcState().instAddr(),
+                static_cast<BPredUnit::PredictorHistory*>(
+                    dynInst->tmpBPHistory[1])->predTaken);
     }
 
     auto br_type = getBranchType(dynInst->staticInst);

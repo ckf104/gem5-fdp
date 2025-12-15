@@ -48,6 +48,7 @@
 #include "base/compiler.hh"
 #include "base/trace.hh"
 #include "debug/Branch.hh"
+#include "debug/Special.hh"
 
 namespace gem5
 {
@@ -193,6 +194,9 @@ BPredUnit::btbFixFromDecode(const StaticInstPtr &inst,
         {
             fixed |= btb_target->instAddr() != taken_target.instAddr();
         }
+        DPRINTF(Special, "update btb from decode, inst: %s,"
+                " seq: %llu, target: 0x%lx\n",
+        inst->getName(), seqNum, taken_target.instAddr());
         btb->update(tid, pc, taken_target, br_type, inst);
     }
     // 否则将 invalid btb entry 移除，必定有 invalid entry
@@ -707,6 +711,9 @@ BPredUnit::squash(const InstSeqNum &squashed_sn,
             DPRINTF(Branch,"[tid:%i] BTB Update called for [sn:%llu] "
                         "PC %#x -> T: %#x\n", tid,
                         hist->seqNum, hist->pc, hist->target->instAddr());
+            DPRINTF(Special, "update btb from squash, inst: %s,",
+                    " seq: %llu, target: 0x%lx\n",
+            hist->inst->getName(), hist->seqNum, hist->target->instAddr());
 
             stats.BTBUpdates++;
             btb->update(tid, hist->pc,

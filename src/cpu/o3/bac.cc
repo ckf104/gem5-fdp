@@ -51,6 +51,8 @@
 #include "debug/Drain.hh"
 #include "debug/Fetch.hh"
 #include "debug/O3PipeView.hh"
+#include "debug/Special.hh"
+#include "enums/TargetProvider.hh"
 #include "params/BaseO3CPU.hh"
 #include "sim/full_system.hh"
 
@@ -308,15 +310,27 @@ BAC::dealBTBMissBranch(const DynInstPtr& mis_inst, const PCStateBase &target)
     std::unique_ptr<PCStateBase> next_pc(mis_inst->pcState().clone());
     auto taken = bpu->predict(mis_inst->staticInst, mis_inst->seqNum,
             *next_pc, tid);
-    // btb miss，因此必然预测为 not taken
-    assert(!taken);
-    auto pred = bpu->predHist[tid].front()->condPred;
+    auto bp_hist = bpu->predHist[tid].front();
+    auto pred = bp_hist->condPred;
     if (pred)
     {
         // 虽然 btb miss，但是 tage 依然预测正确了
         stats.btbMissTageCorrect++;
     }
-    bpu->squash(mis_inst->seqNum, target, true, tid, true);
+    // 可能的情况是，该指令在循环中被执行了两次，后执行的指令先执行完成，发现 mispredict，然后 squash
+    // 修正了 btb，因此先执行的指令此时可能 btb 会命中，预测为 taken
+    if (bp_hist->predTaken)
+    {
+        bp_hist->predTaken = false;
+        bp_hist->actuallyTaken = true;
+        bp_hist->targetProvider = enums::NoTarget;
+    }
+    else
+    {
+        bpu->squash(mis_inst->seqNum, target, true, tid, true);
+    }
+    bp_hist->btbHit = false;
+    bp_hist->mispredict = true;
 }
 
 bool
@@ -663,6 +677,8 @@ BAC::generateFetchTargets(ThreadID tid, bool &status_change)
         {
             next_pc->set(search_addr);
             pred_taken = predict(tid, static_inst, curFT, *next_pc);
+            DPRINTF(Special, "bac predict, inst: %s, pc: 0x%x, taken: %d\n",
+                static_inst->getName(), next_pc->instAddr(), (int)pred_taken);
 
             // RISC-V 体系结构中一条指令只有至多一个 branch，并且该 branch 是最
             // 后一条 micro inst

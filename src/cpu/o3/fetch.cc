@@ -61,6 +61,7 @@
 #include "debug/Fetch.hh"
 #include "debug/O3CPU.hh"
 #include "debug/O3PipeView.hh"
+#include "debug/Special.hh"
 #include "debug/Squash.hh"
 #include "mem/packet.hh"
 #include "params/BaseO3CPU.hh"
@@ -1034,6 +1035,11 @@ Fetch::buildInst(ThreadID tid, StaticInstPtr staticInst,
 
     DPRINTF(Fetch, "[tid:%i] Instruction is: %s\n", tid,
             instruction->staticInst->disassemble(this_pc.instAddr()));
+
+    DPRINTF(Special, "fetch, inst: %s, seq: %llu, pc: 0x%x\n",
+            instruction->staticInst->getName(),
+            instruction->seqNum,
+            instruction->pcState().instAddr());
 
 #if TRACING_ON
     if (trace) {
