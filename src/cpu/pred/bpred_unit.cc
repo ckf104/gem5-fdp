@@ -206,6 +206,7 @@ BPredUnit::btbFixFromDecode(const StaticInstPtr &inst,
         auto removed = btb->removeBTBEntry(tid, pc);
         fixed |= removed;
     }
+    assert(fixed);
     return fixed;
 }
 
