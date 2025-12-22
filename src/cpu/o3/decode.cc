@@ -862,6 +862,10 @@ Decode::decodeInsts(ThreadID tid)
                 assert(hist->btbHit);
                 hist->btbHit = false;
             }
+            else
+            {
+                inst->staticInst->advancePC(*predict_pc);
+            }
             if (taken)
             {
                 if (inst->isIndirectCtrl())

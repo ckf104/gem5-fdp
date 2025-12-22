@@ -672,13 +672,12 @@ BPredUnit::btbFixFromDecode(const StaticInstPtr &inst,
     {
         btb->update(tid, pc, taken_target, br_type, inst);
     }
-    // 否则将 invalid btb entry 移除，必定有 invalid entry
-    // 否则不会触发 squash
+    // 否则将 invalid btb entry 移除
     else
     {
         auto removed = btb->removeBTBEntry(tid, pc);
-        assert(removed);
     }
+    assert(fixed);
     return fixed;
 }
 
