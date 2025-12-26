@@ -229,6 +229,55 @@ for cpu in system.cpu:
     cpu.FTQSampleFreq = args.FTQSampleFreq
     cpu.alignFetchTarget = args.alignFetchTarget
     cpu.fetchMultiFT = args.fetchMultiFT
+    if args.boom_config:
+        cpu.fetchBufferSize = 8
+        cpu.fetchWidth = 4
+        cpu.decodeWidth = 2
+        # 这里主要因为 gem5 和 boom 在 issue 的实现上不太一样，
+        # gem5 没有区分 mem / float / int queue，因此这里就把
+        # BOOM 中各个 queue 的 issue width 加起来了
+        cpu.issueWidth = 4
+        cpu.renameWidth = 2
+        cpu.dispatchWidth = 2
+        cpu.commitWidth = 2
+
+        # 配置为 BOOM 的功能单元池
+        from m5.objects.FUPool import BOOMFUPool
+
+        cpu.fuPool = BOOMFUPool()
+
+        # BOOM 的前端 4 个周期，decode + rename + dispatch 两个周期
+        # 因此 到达 issue 需要 6 个周期
+        # gem5 到达 issue 是 icache delay + fetchToDecodeDelay +
+        # decodeToRenameDelay + renameToIEWDelay
+        # 其中为了保证 pipline icache access，icache delay 只能是 1
+        # 周期，而 BOOM 中预译码发生在第三个周期，为了与 BOOM 相匹配，这里
+        # fetchToDecodeDelay 必须设置为 1
+        cpu.fetchToDecodeDelay = 1
+        cpu.decodeToRenameDelay = 2
+        cpu.renameToIEWDelay = 2
+
+        # BOOM 里每周期能响应的 load / store 请求由 `memWidth` 参数决定，
+        # medium boom 里 `memWidth` 为 1，因此每周期只能响应一条 load
+        # 或者一条 store 指令，但是 gem5 里是分别设置 load port 和 store
+        # port，就只能暂且把这俩 port 都设置为 1
+        cpu.cacheLoadPorts = 1
+        cpu.cacheStorePorts = 1
+        cpu.LQEntries = 16
+        cpu.SQEntries = 16
+        # 这是用来检查 load / store dependency 时忽略低位的若干 bits，我
+        # 看 BOOM 里的实现是要求地址有真实重叠，不会忽略低位 bits
+        cpu.LSQDepCheckShift = 0
+
+        cpu.numPhysIntRegs = 80
+        cpu.numPhysFloatRegs = 64
+        # 由于 gem5 的 issue queue 只有一个，没有区分 mem, fp, int，这里
+        # 就按最大情况处理了
+        cpu.numIQEntries = 48
+        cpu.numROBEntries = 64
+
+        # BOOM 中预计每周期预测 8 条指令
+        cpu.fetchTargetWidth = 16
 
 if ObjectList.is_kvm_cpu(CPUClass) or ObjectList.is_kvm_cpu(FutureClass):
     if buildEnv["USE_X86_ISA"]:
@@ -261,8 +310,12 @@ for i in range(np):
     if args.checker:
         system.cpu[i].addCheckerCpu()
 
-    if args.bp_type:
-        bpClass = ObjectList.bp_list.get(args.bp_type)
+    if args.bp_type or args.boom_config:
+        if args.bp_type:
+            bpClass = ObjectList.bp_list.get(args.bp_type)
+        else:
+            # TODO: 调整 LTAGE 的配置与 BOOM 相适配
+            bpClass = ObjectList.bp_list.get("LTAGE")
         system.cpu[i].branchPred = bpClass()
         cpu.branchPred.instShiftAmt = 1
         cpu.branchPred.requiresBTBHit = True
@@ -271,12 +324,20 @@ for i in range(np):
         cpu.branchPred.btb.associativity = args.btbAssociativity
         cpu.branchPred.btb.tagBits = args.btbTagBits
         cpu.branchPred.takenOnlyHistory = args.takenOnlyHist
+        if args.boom_config:
+            cpu.branchPred.btb.numEntries = 1024
+            cpu.branchPred.btb.associativity = 1
+            cpu.branchPred.btb.tagBits = 64
+            cpu.branchPred.ras.numEntries = 32
 
     if args.indirect_bp_type:
         indirectBPClass = ObjectList.indirect_bp_list.get(
             args.indirect_bp_type
         )
         system.cpu[i].branchPred.indirectBranchPred = indirectBPClass()
+    if args.boom_config:
+        # BOOM 中没有间接分支预测器
+        system.cpu[i].branchPred.indirectBranchPred = NULL
 
     system.cpu[i].createThreads()
 

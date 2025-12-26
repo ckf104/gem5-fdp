@@ -56,6 +56,48 @@ class IntMultDiv(FUDesc):
     count = 2
 
 
+# medium boom 中有两个算术 ALU，还有一个计算内存地址的 ALU,
+# 但从 gem5 的 IEW::executeInsts 中可以看到，内存指令是在执行
+# 时直接计算的地址，没有经过 ALU 单元，因此这里就只设置 BOOM 的两个
+# 算术 ALU 单元
+class BOOMInt_ALU1(FUDesc):
+    opList = [OpDesc(opClass="IntAlu"), OpDesc(opClass="IntMult", opLat=3)]
+    count = 1
+
+
+class BOOMInt_ALU2(FUDesc):
+    opList = [
+        OpDesc(opClass="IntAlu"),
+        OpDesc(opClass="IntDiv", opLat=20, pipelined=False),
+    ]
+    count = 1
+
+
+# medium boom 的浮点 ALU 分为 FPUUnit 和 FDivSqrtUnit 两部分
+# 前者处理简单的，可以 pipeline 的浮点计算，后者负责 div 和 sqrt 这俩
+# 不能 pipeline 的复杂操作。在 medium boom 的 FPUParams 中, single fma
+# 和 double fma 都是 4 个周期完成（我不太确定 add 和 mul 是不是也是 4
+# 个周期），而 fpmu 和 ifpu 操作都是两个周期完成
+class BOOMFP_ALU1(FUDesc):
+    opList = [
+        OpDesc(opClass="FloatAdd", opLat=4),
+        OpDesc(opClass="FloatMult", opLat=4),
+        OpDesc(opClass="FloatMultAcc", opLat=4),
+        OpDesc(opClass="FloatCmp", opLat=2),
+        OpDesc(opClass="FloatCvt", opLat=2),
+        OpDesc(opClass="FloatMisc", opLat=2),
+    ]
+    count = 1
+
+
+class BOOMFP_ALU2(FUDesc):
+    opList = [
+        OpDesc(opClass="FloatDiv", opLat=12, pipelined=False),
+        OpDesc(opClass="FloatSqrt", opLat=24, pipelined=False),
+    ]
+    count = 1
+
+
 class FP_ALU(FUDesc):
     opList = [
         OpDesc(opClass="FloatAdd", opLat=2),

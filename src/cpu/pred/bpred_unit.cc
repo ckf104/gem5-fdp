@@ -140,7 +140,8 @@ BPredUnit::lookupIndirect(const StaticInstPtr &inst, const InstSeqNum &seqNum,
     {
         // RISC-V 中没有条件间接跳转指令
         assert(inst->isUncondCtrl());
-        auto ipred_target = iPred->lookup(tid, seqNum, pc.instAddr());
+        auto ipred_target = iPred ? iPred->lookup(tid, seqNum, pc.instAddr())
+                                                : nullptr;
         if (ipred_target)
         {
             set(pc, *ipred_target);

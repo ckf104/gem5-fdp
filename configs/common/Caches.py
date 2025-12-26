@@ -64,8 +64,34 @@ class L1_ICache(L1Cache):
     writeback_clean = True
 
 
+class L1_BOOM_ICache(L1_ICache):
+    # Cache line size 在 system 模块下，默认为 64 字节
+    size = "16KiB"
+    assoc = 4
+    # 实际上 BOOM 的 icache 延迟为 2 个周期（访问 + tag 比较）
+    # 这里设置为 1 个周期是因为 gem5 前端对 icache 的访问不是
+    # 流水线式的，如果设置为 2 个周期会导致每隔一个周期前端就会被
+    # 阻塞一次，后续我们修改 fetchToDecodeDelay 和 decodeToRenameDelay
+    # 来确保整体流水线周期与 BOOM 基本保持一致
+    tag_latency = 1
+    data_latency = 1
+    # BOOM 中 ICache 是没有 mshrs 的。而 gem5 默认的耦合
+    # 前端也用不上 mshrs，这里设置为 12 是为了支持 fdp 的预取
+    mshrs = 12
+
+
 class L1_DCache(L1Cache):
     pass
+
+
+class L1_BOOM_DCache(L1_DCache):
+    size = "16KiB"
+    assoc = 4
+    # BOOM 的 dcache 延迟为 2 个周期
+    tag_latency = 2
+    data_latency = 2
+    # BOOM 的 dcache 有 2 个 mshr，用于处理多个未决请求
+    mshrs = 2
 
 
 class L2Cache(Cache):
@@ -76,6 +102,11 @@ class L2Cache(Cache):
     mshrs = 20
     tgts_per_mshr = 12
     write_buffers = 8
+
+
+class L2_BOOMCache(L2Cache):
+    # L2 Cache 在 medium boom 中大小为 512KB
+    size = "512KiB"
 
 
 class IOCache(Cache):

@@ -754,6 +754,11 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         default=False,
         help="Use taken only history for branch predictor",
     )
+    parser.add_argument(
+        "--boom-config",
+        action="store_true",
+        help="Use a standard BOOM configuration for O3 cores.",
+    )
 
 
 def addSEOptions(parser):

@@ -61,11 +61,11 @@ def _get_cache_opts(level, options):
     opts = {}
 
     size_attr = f"{level}_size"
-    if hasattr(options, size_attr):
+    if hasattr(options, size_attr) and not options.boom_config:
         opts["size"] = getattr(options, size_attr)
 
     assoc_attr = f"{level}_assoc"
-    if hasattr(options, assoc_attr):
+    if hasattr(options, assoc_attr) and not options.boom_config:
         opts["assoc"] = getattr(options, assoc_attr)
 
     prefetcher_attr = f"{level}_hwp_type"
@@ -107,6 +107,13 @@ def config_cache(options, system):
             core.HPI_DCache,
             core.HPI_ICache,
             core.HPI_L2,
+            None,
+        )
+    elif options.boom_config:
+        dcache_class, icache_class, l2_cache_class, walk_cache_class = (
+            L1_BOOM_DCache,
+            L1_BOOM_ICache,
+            L2_BOOMCache,
             None,
         )
     else:
