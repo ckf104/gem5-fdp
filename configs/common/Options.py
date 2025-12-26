@@ -745,6 +745,11 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
     parser.add_argument(
         "--fetchBufferSize", type=int, default=8, help="Size of fetch buffer"
     )
+    parser.add_argument(
+        "--boom-config",
+        action="store_true",
+        help="Use a standard BOOM configuration for O3 cores.",
+    )
 
 
 def addSEOptions(parser):

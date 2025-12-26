@@ -63,3 +63,20 @@ class DefaultFUPool(FUPool):
         RdWrPort(),
         IprPort(),
     ]
+
+
+# 主要是调整了 int alu 和 fp alu 的配置
+class BOOMFUPool(FUPool):
+    FUList = [
+        BOOMInt_ALU1(),
+        BOOMInt_ALU2(),
+        BOOMFP_ALU1(),
+        BOOMFP_ALU2(),
+        ReadPort(),
+        SIMD_Unit(),
+        Matrix_Unit(),
+        PredALU(),
+        WritePort(),
+        RdWrPort(),
+        IprPort(),
+    ]

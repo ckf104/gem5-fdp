@@ -562,7 +562,7 @@ Fetch::predictNextPC(DynInstPtr& dynInst, PCStateBase &next_pc)
                 *ras_predict);
         }
     }
-    else if (dynInst->staticInst->isIndirectCtrl())
+    else if (dynInst->staticInst->isIndirectCtrl() && branchPred->iPred)
     {
         // RISC-V 中没有条件间接跳转指令
         assert(dynInst->staticInst->isUncondCtrl());
