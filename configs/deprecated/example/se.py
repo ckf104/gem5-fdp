@@ -276,8 +276,9 @@ for cpu in system.cpu:
         cpu.numIQEntries = 48
         cpu.numROBEntries = 64
 
-        # BOOM 中预计每周期预测 8 条指令
-        cpu.fetchTargetWidth = 16
+        # BOOM 中预计每周期预测 4 条指令
+        cpu.fetchTargetWidth = 8
+        cpu.numFTQEntries = 32
 
 if ObjectList.is_kvm_cpu(CPUClass) or ObjectList.is_kvm_cpu(FutureClass):
     if buildEnv["USE_X86_ISA"]:
@@ -314,8 +315,8 @@ for i in range(np):
         if args.bp_type:
             bpClass = ObjectList.bp_list.get(args.bp_type)
         else:
-            # TODO: 调整 LTAGE 的配置与 BOOM 相适配
-            bpClass = ObjectList.bp_list.get("LTAGE")
+            # TODO: 调整 TAGE 的配置与 BOOM 相适配
+            bpClass = ObjectList.bp_list.get("TAGE")
         system.cpu[i].branchPred = bpClass()
         cpu.branchPred.instShiftAmt = 1
         cpu.branchPred.requiresBTBHit = True
@@ -326,7 +327,7 @@ for i in range(np):
         cpu.branchPred.takenOnlyHistory = args.takenOnlyHist
         if args.boom_config:
             cpu.branchPred.btb.numEntries = 1024
-            cpu.branchPred.btb.associativity = 1
+            cpu.branchPred.btb.associativity = 2
             cpu.branchPred.btb.tagBits = 64
             cpu.branchPred.ras.numEntries = 32
 
