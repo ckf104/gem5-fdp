@@ -127,6 +127,12 @@ BPredUnit::lookupIndirect(const StaticInstPtr &inst, const InstSeqNum &seqNum,
                             PCStateBase &pc, ThreadID tid)
 {
     bool hit = false;
+    auto btb_target = btb->lookup(tid, pc.instAddr());
+    if (btb_target)
+    {
+        set(pc, *btb_target);
+        hit = true;
+    }
     if (inst->isReturn())
     {
         auto* ras_predict = ras->topEntry(tid);
@@ -146,15 +152,6 @@ BPredUnit::lookupIndirect(const StaticInstPtr &inst, const InstSeqNum &seqNum,
         {
             set(pc, *ipred_target);
             hit = true;
-        }
-        else
-        {
-            auto btb_target = btb->lookup(tid, pc.instAddr());
-            if (btb_target)
-            {
-                set(pc, *btb_target);
-                hit = true;
-            }
         }
     }
     // 如果没有命中或者 inst 不是 indirect jump 或者 return 指令
