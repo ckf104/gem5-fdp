@@ -310,7 +310,7 @@ for i in range(np):
             bpClass = ObjectList.bp_list.get(args.bp_type)
         else:
             # TODO: 调整 LTAGE 的配置与 BOOM 相适配
-            bpClass = ObjectList.bp_list.get("LTAGE")
+            bpClass = ObjectList.bp_list.get("TAGE")
         system.cpu[i].branchPred = bpClass()
         cpu.branchPred.instShiftAmt = 1
         cpu.branchPred.requiresBTBHit = True
@@ -320,7 +320,7 @@ for i in range(np):
         cpu.branchPred.btb.tagBits = args.btbTagBits
         if args.boom_config:
             cpu.branchPred.btb.numEntries = 1024
-            cpu.branchPred.btb.associativity = 1
+            cpu.branchPred.btb.associativity = 2
             cpu.branchPred.btb.tagBits = 64
             cpu.branchPred.ras.numEntries = 32
 

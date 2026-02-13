@@ -76,8 +76,9 @@ class L1_BOOM_ICache(L1_ICache):
     tag_latency = 1
     data_latency = 1
     # BOOM 中 ICache 是没有 mshrs 的。而 gem5 默认的耦合
-    # 前端也用不上 mshrs，这里设置为 12 是为了支持 fdp 的预取
-    mshrs = 12
+    # 前端也用不上 mshrs，这里设置为 6 是为了支持 fdp 的预取
+    mshrs = 6
+    replacement_policy = RandomRP()
 
 
 class L1_DCache(L1Cache):
@@ -92,6 +93,7 @@ class L1_BOOM_DCache(L1_DCache):
     data_latency = 2
     # BOOM 的 dcache 有 2 个 mshr，用于处理多个未决请求
     mshrs = 2
+    replacement_policy = RandomRP()
 
 
 class L2Cache(Cache):
