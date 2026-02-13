@@ -117,10 +117,18 @@ SimpleBTB::update(ThreadID tid, Addr instPC,
 {
     stats.updates[type]++;
 
-    BTBEntry *victim = btb.findVictim({instPC, tid});
-
-    btb.insertEntry({instPC, tid}, victim);
-    victim->update(target, inst);
+    BTBEntry* entry = btb.findEntry({instPC, tid});
+    if (entry)
+    {
+        entry->update(target, inst);
+        return;
+    }
+    else
+    {
+        BTBEntry *victim = btb.findVictim({instPC, tid});
+        btb.insertEntry({instPC, tid}, victim);
+        victim->update(target, inst);
+    }
 }
 
 bool SimpleBTB::removeBTBEntry(ThreadID tid, Addr instPC)
