@@ -326,6 +326,15 @@ class TAGEBase(SimObject):
     )
 
 
+class BOOM_TAGEBase(TAGEBase):
+    nHistoryTables = 6
+    minHist = 2
+    maxHist = 64
+    tagTableTagWidths = [0, 7, 7, 8, 8, 9, 9]
+    logTagTableSizes = [13, 9, 9, 10, 10, 9, 9]
+    pathHistBits = 0
+
+
 # TAGE branch predictor as described in https://www.jilp.org/vol8/v8paper1.pdf
 # The default sizes below are for the 8C-TAGE configuration (63.5 Kbits)
 class TAGE(BranchPredictor):
@@ -334,6 +343,10 @@ class TAGE(BranchPredictor):
     cxx_header = "cpu/pred/tage.hh"
 
     tage = Param.TAGEBase(TAGEBase(), "Tage object")
+
+
+class BOOMTage(TAGE):
+    tage = BOOM_TAGEBase()
 
 
 class LTAGE_TAGE(TAGEBase):
