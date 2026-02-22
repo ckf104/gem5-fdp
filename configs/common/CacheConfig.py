@@ -192,6 +192,9 @@ def config_cache(options, system):
                 system.cpu[i].dcache = dcache_real
                 system.cpu[i].dcache_mon = dcache_mon
 
+            if options.icmshr:
+                system.cpu[i].icache.mshrs = options.icmshr
+
         elif options.external_memory_system:
             # These port names are presented to whatever 'external' system
             # gem5 is connecting to.  Its configuration will likely depend

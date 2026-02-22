@@ -852,6 +852,12 @@ def addSEOptions(parser):
         default=100,
         help="Frequency of sampling the FTQ Size",
     )
+    parser.add_argument(
+        "--icmshr",
+        default=6,
+        type=int,
+        help="Number of MSHRs for L1 ICache",
+    )
 
 
 def addFSOptions(parser):
