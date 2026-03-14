@@ -61,6 +61,7 @@
 #include <sched.h>
 #include <sys/eventfd.h>
 #include <sys/statfs.h>
+#include <sys/syscall.h>
 
 #else
 #include <sys/mount.h>
@@ -1165,6 +1166,51 @@ renameatFunc(SyscallDesc *desc, ThreadContext *tc,
     }
 
     return renameImpl(desc, tc, old_name, new_name);
+}
+
+/// Target renameat2() handler.
+template <class OS>
+SyscallReturn
+renameat2Func(SyscallDesc *desc, ThreadContext *tc,
+              int olddirfd, VPtr<> oldpath, int newdirfd, VPtr<> newpath,
+              unsigned int flags)
+{
+    SETranslatingPortProxy proxy(tc);
+    std::string old_name;
+    if (!proxy.tryReadString(old_name, oldpath))
+        return -EFAULT;
+
+    std::string new_name;
+    if (!proxy.tryReadString(new_name, newpath))
+        return -EFAULT;
+
+    // Modifying old_name from the directory descriptor
+    if (auto res = atSyscallPath<OS>(tc, olddirfd, old_name);
+        !res.successful()) {
+        return res;
+    }
+
+    // Modifying new_name from the directory descriptor
+    if (auto res = atSyscallPath<OS>(tc, newdirfd, new_name);
+        !res.successful()) {
+        return res;
+    }
+
+    if (flags == 0)
+        return renameImpl(desc, tc, old_name, new_name);
+
+#if defined(__linux__) && defined(SYS_renameat2)
+    auto process = tc->getProcessPtr();
+    old_name = process->checkPathRedirect(old_name);
+    new_name = process->checkPathRedirect(new_name);
+
+    int result = syscall(SYS_renameat2, AT_FDCWD, old_name.c_str(),
+                         AT_FDCWD, new_name.c_str(), flags);
+    return (result == -1) ? -errno : result;
+#else
+    warnUnsupportedOS(desc->name());
+    return -ENOSYS;
+#endif
 }
 
 /// Target fchownat() handler
