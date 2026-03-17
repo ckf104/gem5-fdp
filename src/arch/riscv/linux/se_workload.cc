@@ -90,6 +90,34 @@ class LinuxLoader : public Process::Loader
 
 LinuxLoader linuxLoader;
 
+bool
+warnMissingSysexeAtEntry(RegVal num)
+{
+        switch (num) {
+            case 29:   // ioctl
+            case 98:   // futex
+            case 121:  // sched_getparam
+            case 123:  // sched_getaffinity
+            case 168:  // getcpu
+            case 199:  // socketpair
+            case 202:  // accept
+            case 204:  // getsockname
+            case 205:  // getpeername
+            case 207:  // recvfrom
+            case 209:  // getsockopt
+            case 212:  // recvmsg
+            case 220:  // clone
+            case 258:  // riscv_hwprobe
+            case 260:  // wait4
+            case 278:  // getrandom
+            case 435:  // clone3
+            case 1067: // select
+                return true;
+            default:
+                return false;
+        }
+}
+
 } // anonymous namespace
 
 namespace RiscvISA
@@ -104,12 +132,29 @@ EmuLinux::syscall(ThreadContext *tc)
     process->Process::syscall(tc);
 
     RegVal num = tc->getReg(RiscvISA::SyscallNumReg);
+    RegVal a0 = tc->getReg(RiscvISA::int_reg::A0);
+    RegVal a1 = tc->getReg(RiscvISA::int_reg::A1);
+    RegVal a2 = tc->getReg(RiscvISA::int_reg::A2);
+    RegVal a3 = tc->getReg(RiscvISA::int_reg::A3);
+    RegVal a4 = tc->getReg(RiscvISA::int_reg::A4);
+    RegVal a5 = tc->getReg(RiscvISA::int_reg::A5);
+
+    SyscallDesc *sys_desc = nullptr;
+    if (dynamic_cast<RiscvProcess64 *>(process))
+        sys_desc = syscallDescs64.get(num);
+    else
+        sys_desc = syscallDescs32.get(num);
+
+    if (hasValidCkpt() && warnMissingSysexeAtEntry(num)) {
+        warn("checkpoint side-effect logging missing for syscall #%llu (%s): "
+             "a0=0x%llx a1=0x%llx a2=0x%llx a3=0x%llx a4=0x%llx a5=0x%llx",
+             (unsigned long long)num, sys_desc->name(),
+             (unsigned long long)a0, (unsigned long long)a1,
+             (unsigned long long)a2, (unsigned long long)a3,
+             (unsigned long long)a4, (unsigned long long)a5);
+    }
+
     if (needCreateCkpt) {
-        RegVal a0 = tc->getReg(RiscvISA::int_reg::A0);
-        RegVal a1 = tc->getReg(RiscvISA::int_reg::A1);
-        RegVal a2 = tc->getReg(RiscvISA::int_reg::A2);
-        RegVal a3 = tc->getReg(RiscvISA::int_reg::A3);
-        RegVal a4 = tc->getReg(RiscvISA::int_reg::A4);
         std::vector<uint64_t> params;
         params.push_back(a0);
         params.push_back(a1);
@@ -119,10 +164,7 @@ EmuLinux::syscall(ThreadContext *tc)
         ckpt_add_sysenter(tc->pcState().instAddr(), num, params);
     }
 
-    if (dynamic_cast<RiscvProcess64 *>(process))
-        syscallDescs64.get(num)->doSyscall(tc);
-    else
-        syscallDescs32.get(num)->doSyscall(tc);
+    sys_desc->doSyscall(tc);
 }
 
 /// Target uname() handler.

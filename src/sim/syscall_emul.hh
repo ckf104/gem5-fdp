@@ -1609,6 +1609,16 @@ newfstatatFunc(SyscallDesc *desc, ThreadContext *tc, int dirfd,
 
     copyOutStat64Buf<OS>(tgt_stat, &host_buf);
 
+    if (needCreateCkpt) {
+        typename OS::tgt_stat64 temp_stat;
+        copyOutStat64Buf<OS>(&temp_stat, &host_buf);
+        unsigned outsize = sizeof(temp_stat);
+        unsigned char *outdata = (unsigned char *)(&temp_stat);
+        unsigned long long dstaddr = (unsigned long long)tgt_stat;
+        ckpt_add_sysexe(
+            tc->pcState().instAddr(), result, dstaddr, outsize, outdata);
+    }
+
     return 0;
 }
 
@@ -2295,6 +2305,13 @@ pread64Func(SyscallDesc *desc, ThreadContext *tc,
     BufferArg bufArg(bufPtr, nbytes);
 
     int bytes_read = pread(sim_fd, bufArg.bufferPtr(), nbytes, offset);
+
+    if (needCreateCkpt) {
+        uint64_t datasize = bytes_read > 0 ? bytes_read : 0;
+        unsigned char *outdata = (unsigned char *)bufArg.bufferPtr();
+        ckpt_add_sysexe(tc->pcState().instAddr(), bytes_read,
+                        (uint64_t)bufPtr, datasize, outdata);
+    }
 
     bufArg.copyOut(SETranslatingPortProxy(tc));
 
