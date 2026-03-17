@@ -691,6 +691,12 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
 
 
 def addSEOptions(parser):
+    parser.add_argument(
+        "--ckptsetting",
+        default="",
+        help="The file for checkpoint creation settings.",
+    )
+
     # Benchmark options
     parser.add_argument(
         "-c",

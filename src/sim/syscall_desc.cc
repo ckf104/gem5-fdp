@@ -30,6 +30,7 @@
 #include "sim/syscall_desc.hh"
 
 #include "base/types.hh"
+#include "sim/ckpt_collect.hh"
 #include "sim/eventq.hh"
 #include "sim/syscall_debug_macros.hh"
 
@@ -93,6 +94,11 @@ SyscallDesc::setupRetry(ThreadContext *tc)
 void
 SyscallDesc::handleReturn(ThreadContext *tc, const SyscallReturn &ret)
 {
+    if (needCreateCkpt) {
+        ckpt_add_sysret(tc->pcState().instAddr(), dumper(name(), tc),
+                        !ret.suppressed(), ret.encodedValue());
+    }
+
     if (ret.suppressed()) {
         DPRINTF_SYSCALL(Base, "No return value.\n", name());
     } else {

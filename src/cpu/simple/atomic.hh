@@ -41,10 +41,13 @@
 #ifndef __CPU_SIMPLE_ATOMIC_HH__
 #define __CPU_SIMPLE_ATOMIC_HH__
 
+#include <set>
+
 #include "cpu/simple/base.hh"
 #include "cpu/simple/exec_context.hh"
 #include "mem/request.hh"
 #include "params/BaseAtomicSimpleCPU.hh"
+#include "sim/ckpt_collect.hh"
 #include "sim/probe/probe.hh"
 
 namespace gem5
@@ -58,6 +61,35 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     virtual ~AtomicSimpleCPU();
 
     void init() override;
+
+    uint64_t benchinsts, takeSysNum;
+    bool last_isBenchInst = false;
+    bool startlog = false;
+    std::set<Addr> preinsts;
+    uint64_t instnums[10];
+    void
+    recordinst(StaticInstPtr inst)
+    {
+      if (inst->isLoad())
+        instnums[0]++;
+      else if (inst->isStore())
+        instnums[1]++;
+
+      if (inst->isAtomic())
+        instnums[2]++;
+      if (inst->isControl())
+        instnums[3]++;
+      if (inst->isCall())
+        instnums[4]++;
+      if (inst->isReturn())
+        instnums[5]++;
+      if (inst->isCondCtrl())
+        instnums[6]++;
+      if (inst->isUncondCtrl())
+        instnums[7]++;
+      if (inst->isIndirectCtrl())
+        instnums[8]++;
+    }
 
   protected:
     EventFunctionWrapper tickEvent;

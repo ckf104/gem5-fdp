@@ -97,6 +97,7 @@ def get_processes(args):
         process.executable = wrkld
         process.cwd = os.getcwd()
         process.gid = os.getgid()
+        process.ckptsetting = args.ckptsetting
 
         if args.env:
             with open(args.env) as f:

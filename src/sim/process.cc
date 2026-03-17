@@ -59,6 +59,7 @@
 #include "mem/page_table.hh"
 #include "mem/se_translating_port_proxy.hh"
 #include "params/Process.hh"
+#include "sim/ckpt_collect.hh"
 #include "sim/emul_driver.hh"
 #include "sim/fd_array.hh"
 #include "sim/fd_entry.hh"
@@ -162,6 +163,8 @@ Process::Process(const ProcessParams &params, EmulationPageTable *pTable,
 
     if (loader::debugSymbolTable.empty())
         loader::debugSymbolTable = objFile->symtab();
+
+    init_ckpt_settings(params.ckptsetting.c_str());
 }
 
 void

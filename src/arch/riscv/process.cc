@@ -49,6 +49,7 @@
 #include "mem/page_table.hh"
 #include "params/Process.hh"
 #include "sim/aux_vector.hh"
+#include "sim/ckpt_collect.hh"
 #include "sim/process.hh"
 #include "sim/process_impl.hh"
 #include "sim/syscall_return.hh"
@@ -72,11 +73,33 @@ RiscvProcess64::RiscvProcess64(const ProcessParams &params,
         loader::ObjectFile *objFile) :
         RiscvProcess(params, objFile)
 {
-    const Addr stack_base = 0x7FFFFFFFFFFFFFFFL;
+    Addr stack_base = 0x7FFFFFFFFFFFFFFFL;
+    if (params.stackbase != 0)
+        stack_base = params.stackbase;
+    if (ckptsettings.stack_base != 0)
+        stack_base = ckptsettings.stack_base;
+    else
+        ckptsettings.stack_base = stack_base;
+
+    Addr mmap_end = 0x4000000000000000L;
+    if (params.mmapend != 0)
+        mmap_end = params.mmapend;
+    if (ckptsettings.mmapend != 0)
+        mmap_end = ckptsettings.mmapend;
+    else
+        ckptsettings.mmapend = mmap_end;
+
+    Addr temp_brk_point = roundUp(image.maxAddr(), PageBytes);
+    if (ckptsettings.brk_point != 0) {
+        if (ckptsettings.brk_point >= temp_brk_point)
+            temp_brk_point = roundUp(ckptsettings.brk_point, PageBytes);
+    } else {
+        ckptsettings.brk_point = temp_brk_point;
+    }
+
+    const Addr brk_point = temp_brk_point;
     const Addr max_stack_size = 8 * 1024 * 1024;
     const Addr next_thread_stack_base = stack_base - max_stack_size;
-    const Addr brk_point = roundUp(image.maxAddr(), PageBytes);
-    const Addr mmap_end = 0x4000000000000000L;
     memState = std::make_shared<MemState>(this, brk_point, stack_base,
             max_stack_size, next_thread_stack_base, mmap_end);
 }

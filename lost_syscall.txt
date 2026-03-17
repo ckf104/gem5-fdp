@@ -1,0 +1,57 @@
+**对话1**
+ckpt.patch 中包含的修改是一位学长的旧的 gem5 版本上的实现，它截取程序某一段的运行记录，得到 checkpoint，后续可以单独运行该 checkpoint 而不需要运行完整的程序。它的具体使用和实现方法见 README.md。除了 patch 中包含的修改，还新增了 5 个文件，它们在 /home/ckf104/bishe/gem5-ckpt 目录中
+```
+        src/sim/ckpt_collect.cc
+        src/sim/ckpt_collect.hh
+        src/sim/ckpt_saveFLoads.cc
+        src/sim/ckptinfo.cc
+        src/sim/ckptinfo.hh
+        src/sim/fastlz.cc
+        src/sim/fastlz.hh
+```
+
+该实现核心的想法是记录截取的 checkpoint 起始的寄存器状态，运行过程中使用的地址段和第一次 load 得到的数据，以及 syscall 返回的数据，这样保证以后可以从 checkpoint 处开始执行。
+
+总的来说，这些修改代码可以归为以下三类
+* 制作 checkpoint，这部分是最核心的代码，包括 settingsfile 中的 readckpt 字段以及后续和该字段相关的代码
+* 支持 champsim trace 相关的代码
+* README_Support_Readckpt.md 文档中指示的修改，它用来让 gem5 能够加载 checkpoint 并支持特定的拓展指令
+
+我现在把第一部分相关的修改移植到了当前 workspace 的新的 gem5 版本上，请你比较当前 workspace 的修改和 patch，分析我是否有漏移植的部分
+
+
+**对话2**
+从该 checkpoint 生成的实现上看，它需要记录每个 syscall 的输出（基于 ckpt_add_sysret 函数），另外还需要通过 ckpt_add_sysexe 记录每个 syscall 的副作用（修改了 guest 的内存），现在 `EmuLinux::syscallDescs64` 中记录了所有 RISCV64 系统中的 syscall，你需要逐一检查，检查是否有哪些 syscall 存在副作用，但是并没有使用 ckpt_add_sysexe 记录
+
+
+
+**检查结论**
+- 我按 `EmuLinux::syscallDescs64` 的 handler 全量过了一遍，重点筛查“会写 guest 内存但函数体内没有 `ckpt_add_sysexe`”。
+- 下面这些是**明确存在副作用且当前未记录 sysexe** 的项（含条件性副作用）。
+
+**明确漏记（建议补）**
+- `ioctl`（`SIOCGIFCONF/SIOCGIFFLAGS/...` 分支会 `copyOut`）: syscall_emul.hh
+- `pread64`（把读到的数据写回 guest buffer）: syscall_emul.hh
+- `futex`（`FUTEX_WAKE_OP` 会修改 `uaddr2` 并 `copyOut`）: syscall_emul.hh
+- `sched_getaffinity`（写回 cpuset）: syscall_emul.hh
+- `socketpair`（写回 fd[2]）: syscall_emul.hh
+- `accept`（`addr/len` 非空时写回）: syscall_emul.hh
+- `recvfrom`（写回 data + sockaddr + addrlen）: syscall_emul.hh
+- `recvmsg`（写回 msghdr/iov/control）: syscall_emul.cc
+- `getsockopt`（写回 val + len）: syscall_emul.cc
+- `getsockname`（写回 sockaddr + len）: syscall_emul.cc
+- `getpeername`（写回 sockaddr + len）: syscall_emul.cc
+- `wait4`（写回 status）: syscall_emul.hh
+- `getrandom`（写回随机字节）: syscall_emul.hh
+- `newfstatat`（写回 `tgt_stat64`，但无 sysexe）: syscall_emul.hh
+- `select`（会修改 `readfds/writefds/errorfds/timeout`）: syscall_emul.hh
+- `getcpu`（写回 `cpu/node`）: syscall_emul.cc
+- `sched_getparam`（写回 `paramPtr`）: syscall_emul.cc
+- `riscv_hwprobe`（写回 `pairs/cpus_user`）: se_workload.cc
+- `clone/clone3`（经 `doClone` 在 `PARENT_SETTID/CHILD_SETTID` 路径写回 tid）: syscall_emul.hh
+
+**已确认不是漏记（你这版已覆盖）**
+- `read/getcwd/pipe2/getdents/stat64/fstat64/lstat64/statfs/fstatfs/time/gettimeofday/getrlimit/getrusage/sysinfo/...` 已有 `ckpt_add_sysexe`。
+- `pipe` 走 `pipe2Func`，`stat64` 走 `fstatat64Func`，这两条是间接覆盖，不算漏。
+
+如果你愿意，我可以下一步直接给你一份“最小补丁清单”（先补高优先级：`pread64`、`newfstatat`、`recvfrom/recvmsg`、`select`、`riscv_hwprobe`、`clone/doClone`）。

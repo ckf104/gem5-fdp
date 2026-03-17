@@ -57,6 +57,7 @@
 #include "mem/page_table.hh"
 #include "mem/se_translating_port_proxy.hh"
 #include "sim/byteswap.hh"
+#include "sim/ckpt_collect.hh"
 #include "sim/process.hh"
 #include "sim/proxy_ptr.hh"
 #include "sim/sim_exit.hh"
@@ -110,6 +111,14 @@ exitFutexWake(ThreadContext *tc, VPtr<> addr, uint64_t tgid)
     long *ctid = (long *)ctidBuf.bufferPtr();
     *ctid = 0;
     ctidBuf.copyOut(SETranslatingPortProxy(tc));
+
+    if (needCreateCkpt) {
+        unsigned outsize = sizeof(long);
+        unsigned char *outdata = (unsigned char *)(ctidBuf.bufferPtr());
+        unsigned long long dstaddr = (unsigned long long)addr;
+        ckpt_add_sysexe(
+            tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
+    }
 
     FutexMap &futex_map = tc->getSystemPtr()->futexMap;
     // Wake one of the waiting threads.
@@ -328,6 +337,13 @@ _llseekFunc(SyscallDesc *desc, ThreadContext *tc,
     BufferArg result_buf(result_ptr, sizeof(result));
     std::memcpy(result_buf.bufferPtr(), &result, sizeof(result));
     result_buf.copyOut(SETranslatingPortProxy(tc));
+    if (needCreateCkpt && result != (off_t)-1) {
+        unsigned outsize = sizeof(result);
+        unsigned char *outdata = (unsigned char *)(result_buf.bufferPtr());
+        unsigned long long dstaddr = (unsigned long long)result_ptr;
+        ckpt_add_sysexe(
+            tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
+    }
     return 0;
 }
 
@@ -341,6 +357,13 @@ gethostnameFunc(SyscallDesc *desc, ThreadContext *tc,
     BufferArg name(buf_ptr, name_len);
     strncpy((char *)name.bufferPtr(), hostname, name_len);
     name.copyOut(SETranslatingPortProxy(tc));
+    if (needCreateCkpt) {
+        unsigned outsize = name_len;
+        unsigned char *outdata = (unsigned char *)(name.bufferPtr());
+        unsigned long long dstaddr = (unsigned long long)buf_ptr;
+        ckpt_add_sysexe(
+            tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
+    }
     return 0;
 }
 
@@ -737,6 +760,14 @@ pipe2Func(SyscallDesc *desc, ThreadContext *tc, VPtr<> tgt_addr, int flags)
     buf_ptr[1] = tgt_fds[1];
     tgt_handle.copyOut(SETranslatingPortProxy(tc));
 
+    if (needCreateCkpt) {
+        unsigned outsize = sizeof(int[2]);
+        unsigned char *outdata = (unsigned char *)(tgt_handle.bufferPtr());
+        unsigned long long dstaddr = (unsigned long long)tgt_addr;
+        ckpt_add_sysexe(
+            tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
+    }
+
     if (flags) {
         // pipe2 only uses O_NONBLOCK, O_CLOEXEC, and (O_NONBLOCK | O_CLOEXEC)
         // if flags set to anything else, return EINVAL
@@ -1000,6 +1031,13 @@ getdentsImpl(SyscallDesc *desc, ThreadContext *tc,
     }
 
     buf_arg.copyOut(SETranslatingPortProxy(tc));
+    if (needCreateCkpt) {
+        unsigned outsize = count;
+        unsigned char *outdata = (unsigned char *)(buf_arg.bufferPtr());
+        unsigned long long dstaddr = (unsigned long long)buf_ptr;
+        ckpt_add_sysexe(
+            tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
+    }
     return status;
 }
 #endif

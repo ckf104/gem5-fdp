@@ -42,9 +42,12 @@
 #include "cpu/simple/atomic.hh"
 
 #include "arch/generic/decoder.hh"
+#include "arch/riscv/regs/float.hh"
+#include "arch/riscv/regs/int.hh"
 #include "base/output.hh"
 #include "cpu/exetrace.hh"
 #include "cpu/utils.hh"
+#include "debug/CreateCkpt.hh"
 #include "debug/Drain.hh"
 #include "debug/ExecFaulting.hh"
 #include "debug/SimpleCPU.hh"
@@ -52,6 +55,7 @@
 #include "mem/packet_access.hh"
 #include "mem/physical.hh"
 #include "params/BaseAtomicSimpleCPU.hh"
+#include "sim/ckpt_collect.hh"
 #include "sim/faults.hh"
 #include "sim/full_system.hh"
 #include "sim/system.hh"
@@ -88,6 +92,12 @@ AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     data_read_req = std::make_shared<Request>();
     data_write_req = std::make_shared<Request>();
     data_amo_req = std::make_shared<Request>();
+
+    benchinsts = 0;
+    takeSysNum = 0;
+    last_isBenchInst = false;
+    for (int i = 0; i < 10; i++)
+        instnums[i] = 0;
 }
 
 
@@ -420,6 +430,10 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t *data, unsigned size,
                 assert(!locked);
                 locked = true;
             }
+
+            if (needCreateCkpt && startlog) {
+                ckpt_addload(addr, data, size);
+            }
             return fault;
         }
 
@@ -447,6 +461,10 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
         assert(flags & Request::STORE_NO_DATA);
         // This must be a cache block cleaning request
         data = zero_array;
+    }
+
+    if (needCreateCkpt && startlog) {
+        ckpt_addstore(addr, size);
     }
 
     // use the CPU's statically allocated write request and packet objects
@@ -603,6 +621,10 @@ AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
         return NoFault;
     }
 
+    if (needCreateCkpt && startlog) {
+        ckpt_addload(addr, data, size);
+    }
+
     //If there's a fault and we're not doing prefetch, return it
     return fault;
 }
@@ -681,12 +703,86 @@ AtomicSimpleCPU::tick()
 
             Tick stall_ticks = 0;
             if (curStaticInst) {
+                if (curStaticInst->isSyscall())
+                    preinsts.clear();
+
+                bool isBenchInst = true;
+                uint64_t numInst = t_info.numInst;
+                startlog = hasValidCkpt();
+                needCreateCkpt = startlog;
+
+                if (readCkptSetting) {
+                    isBenchInst = isCkptInst(thread->pcState().instAddr());
+                    if (!isBenchInst) {
+                        needCreateCkpt = false;
+                        startlog = false;
+                    }
+                }
+
                 fault = curStaticInst->execute(&t_info, traceData);
 
                 // keep an instruction count
                 if (fault == NoFault) {
                     countInst();
                     ppCommit->notify(std::make_pair(thread, curStaticInst));
+
+                    if (readCkptSetting) {
+                        if (isBenchInst) {
+                            benchinsts++;
+                            numInst = benchinsts;
+                        }
+
+                        if (!isBenchInst && last_isBenchInst) {
+                            ckpt_insert_syscall(takeSysNum);
+                            takeSysNum++;
+                            preinsts.clear();
+                        }
+                        last_isBenchInst = isBenchInst;
+                    }
+
+                    if (startlog) {
+                        recordinst(curStaticInst);
+                        ckpt_addinst(thread->pcState().instAddr());
+                    }
+
+                    if (!readCkptSetting || (readCkptSetting && isBenchInst)) {
+                        uint64_t length = 0;
+                        if (isCkptStart(numInst, length)) {
+                            uint64_t intregs[32], fpregs[32];
+                            for (int i = 0; i < 32; i++) {
+                                intregs[i] =
+                                    thread->getReg(RiscvISA::intRegClass[i]);
+                                fpregs[i] =
+                                    thread->getReg(RiscvISA::floatRegClass[i]);
+                            }
+                            addCkpt(numInst, length, intregs, fpregs,
+                                    thread->pcState().instAddr(),
+                                    thread->pcState().instAddr() +
+                                        curStaticInst->size(),
+                                    instnums);
+                        }
+                    }
+
+                    if (startlog && !pendingCkpts.empty()) {
+                        if (numInst >= pendingCkpts[0]->startnum +
+                                           pendingCkpts[0]->length) {
+                            if (strictLength) {
+                                ckpt_detectOver(numInst, 0, instnums);
+                            } else {
+                                uint64_t nowpc = thread->pcState().instAddr();
+                                if (curStaticInst->size() != 2 &&
+                                    !curStaticInst->isSyscall()) {
+                                    bool isInPre =
+                                        preinsts.find(nowpc) != preinsts.end();
+                                    if (!isInPre)
+                                        ckpt_detectOver(numInst,
+                                                            nowpc, instnums);
+                                }
+                            }
+                        }
+                        if (curStaticInst->size() != 2 && !strictLength)
+                            preinsts.insert(thread->pcState().instAddr());
+                    }
                 } else if (traceData) {
                     traceFault();
                 }

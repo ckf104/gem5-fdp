@@ -43,12 +43,16 @@
 
 #include <sys/syscall.h>
 
-#include "arch/riscv/process.hh"
+#include <vector>
+
 #include "arch/riscv/insts/static_inst.hh"
+#include "arch/riscv/process.hh"
 #include "arch/riscv/regs/misc.hh"
 #include "base/loader/object_file.hh"
 #include "base/trace.hh"
 #include "cpu/thread_context.hh"
+#include "debug/CreateCkpt.hh"
+#include "sim/ckpt_collect.hh"
 #include "sim/syscall_emul.hh"
 
 namespace gem5
@@ -100,6 +104,21 @@ EmuLinux::syscall(ThreadContext *tc)
     process->Process::syscall(tc);
 
     RegVal num = tc->getReg(RiscvISA::SyscallNumReg);
+    if (needCreateCkpt) {
+        RegVal a0 = tc->getReg(RiscvISA::int_reg::A0);
+        RegVal a1 = tc->getReg(RiscvISA::int_reg::A1);
+        RegVal a2 = tc->getReg(RiscvISA::int_reg::A2);
+        RegVal a3 = tc->getReg(RiscvISA::int_reg::A3);
+        RegVal a4 = tc->getReg(RiscvISA::int_reg::A4);
+        std::vector<uint64_t> params;
+        params.push_back(a0);
+        params.push_back(a1);
+        params.push_back(a2);
+        params.push_back(a3);
+        params.push_back(a4);
+        ckpt_add_sysenter(tc->pcState().instAddr(), num, params);
+    }
+
     if (dynamic_cast<RiscvProcess64 *>(process))
         syscallDescs64.get(num)->doSyscall(tc);
     else
@@ -117,6 +136,20 @@ unameFunc64(SyscallDesc *desc, ThreadContext *tc, VPtr<Linux::utsname> name)
     strcpy(name->release, process->release.c_str());
     strcpy(name->version, "#1 Mon Aug 18 11:32:15 EDT 2003");
     strcpy(name->machine, "riscv64");
+
+    if (needCreateCkpt) {
+        Linux::utsname unametemp;
+        strcpy(unametemp.sysname, "Linux");
+        strcpy(unametemp.nodename,"sim.gem5.org");
+        strcpy(unametemp.release, process->release.c_str());
+        strcpy(unametemp.version, "#1 Mon Aug 18 11:32:15 EDT 2003");
+        strcpy(unametemp.machine, "riscv64");
+        unsigned outsize = sizeof(Linux::utsname);
+        unsigned char *outdata = (unsigned char *)(&unametemp);
+        unsigned long long dstaddr = (unsigned long long)name;
+        ckpt_add_sysexe(
+            tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
+    }
 
     return 0;
 }

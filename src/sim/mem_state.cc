@@ -33,6 +33,7 @@
 #include "arch/generic/mmu.hh"
 #include "debug/Vma.hh"
 #include "mem/se_translating_port_proxy.hh"
+#include "sim/ckpt_collect.hh"
 #include "sim/process.hh"
 #include "sim/syscall_debug_macros.hh"
 #include "sim/system.hh"
@@ -51,6 +52,7 @@ MemState::MemState(Process *owner, Addr brk_point, Addr stack_base,
       _nextThreadStackBase(next_thread_stack_base),
       _mmapEnd(mmap_end)
 {
+        ckptsettings.brk_point = _brkPoint;
 }
 
 MemState&
@@ -166,6 +168,7 @@ MemState::updateBrkRegion(Addr old_brk, Addr new_brk)
     }
 
     _brkPoint = new_brk;
+    ckptsettings.brk_point = _brkPoint;
 }
 
 void
@@ -472,6 +475,7 @@ MemState::extendMmap(Addr length)
             _ownerProcess->mmapGrowsDown() ? start : start + length);
 
     _mmapEnd = _ownerProcess->mmapGrowsDown() ? start : start + length;
+    ckptsettings.mmapend = _mmapEnd;
 
     return start;
 }

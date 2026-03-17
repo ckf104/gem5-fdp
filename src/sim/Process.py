@@ -73,6 +73,9 @@ class Process(SimObject):
     simpoint = Param.UInt64(0, "simulation point at which to start simulation")
     drivers = VectorParam.EmulatedDriver([], "Available emulated drivers")
     release = Param.String("5.1.0", "Linux kernel uname release")
+    stackbase = Param.UInt64(0, "simulation stack base of program")
+    mmapend = Param.UInt64(0, "simulation the mmap addr end place")
+    ckptsetting = Param.String("", "checkpoint settings file path")
 
     @classmethod
     def export_methods(cls, code):
