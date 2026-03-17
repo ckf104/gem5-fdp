@@ -1,5 +1,6 @@
 #include "sim/ckptinfo.hh"
 
+#include <inttypes.h>
 #include <malloc.h>
 
 #include "sim/ckpt_collect.hh"
@@ -361,11 +362,11 @@ bool CkptInfo::detectOver(uint64_t exit_place, uint64_t exit_pc,
   uint64_t s3=firstloads.size()*128/1024;
   uint64_t s4=(memrange.size() + textrange.size())*128/1024;
   uint64_t totalsize = s1+s2+s3+s4;
-  printf("preAccess memsize: %d KB\n", s1);
-  printf("textAccess memsize: %d KB\n", s2);
-  printf("firstloads memsize: %d KB\n", s3);
-  printf("range memsize: %d KB\n", s4);
-  printf("totalsize: %d MB\n", totalsize/1024);
+  printf("preAccess memsize: %" PRIu64 " KB\n", s1);
+  printf("textAccess memsize: %" PRIu64 " KB\n", s2);
+  printf("firstloads memsize: %" PRIu64 " KB\n", s3);
+  printf("range memsize: %" PRIu64 " KB\n", s4);
+  printf("totalsize: %" PRIu64 " MB\n", totalsize/1024);
 
   saveDetailInfo();
   saveCkptInfo();
@@ -404,14 +405,16 @@ void CkptInfo::showSysInfo()
 
 void CkptInfo::saveDetailInfo()
 {
-  char dstname[300];
+  char dstname[512];
   if (readCkptSetting)
-    sprintf(dstname, "%s_ninfor_%ld_len_%ld_warmup_%ld.txt",
+    snprintf(dstname, sizeof(dstname),
+      "%s_ninfor_%" PRIu64 "_len_%" PRIu64 "_warmup_%" PRIu64 ".txt",
       this->filename,
       ckptstartnum + this->startnum + this->warmup,
       length, warmup);
   else
-    sprintf(dstname, "%s_infor_%ld_len_%ld_warmup_%ld.txt",
+    snprintf(dstname, sizeof(dstname),
+      "%s_infor_%" PRIu64 "_len_%" PRIu64 "_warmup_%" PRIu64 ".txt",
       this->filename,
       this->startnum + this->warmup,
       length, warmup);
@@ -428,12 +431,13 @@ void CkptInfo::saveDetailInfo()
       ckptsettings.mmapend);
 
     fprintf(p,
-      "ckptinfo, startnum: %lld, exitnum: %lld, length: %lld\n, "
-      "warmup: %lld, pc: 0x%lx, npc: 0x%lx, exitpc: 0x%lx\n",
+      "ckptinfo, startnum: %" PRIu64 ", exitnum: %" PRIu64
+      ", length: %" PRIu64 "\n, "
+      "warmup: %" PRIu64 ", pc: 0x%lx, npc: 0x%lx, exitpc: 0x%lx\n",
       startnum, simNums, length-warmup, warmup, pc, npc, exit_pc);
     fprintf(p,
-      "text range num: %lld, mem range num: %lld, first load num: %lld, "
-      "syscallnum: %lld\n\n",
+      "text range num: %zu, mem range num: %zu, first load num: %zu, "
+      "syscallnum: %zu\n\n",
       textrange.size(), memrange.size(), firstloads.size(),
       sysinfos.size());
 
@@ -447,24 +451,28 @@ void CkptInfo::saveDetailInfo()
       fprintf(p, "reg %d: 0x%lx\n", i, fpregs[i]);
   }
 
-  fprintf(p, "\n-- text range information: %lld KB --\n", textsize >> 10);
+  fprintf(p, "\n-- text range information: %" PRIu64 " KB --\n",
+      textsize >> 10);
   for (int i=0;i<textrange.size();i++){
-            fprintf(p, "text range %d: 0x%lx, %lld KB\n",
+            fprintf(p, "text range %d: 0x%lx, %" PRIu64 " KB\n",
               i, textrange[i].addr, textrange[i].size >> 10);
   }
 
-  fprintf(p, "\n-- mem range information: %lld KB --\n", memsize >> 10);
+  fprintf(p, "\n-- mem range information: %" PRIu64 " KB --\n", memsize >> 10);
   for (int i=0;i<memrange.size();i++){
-            fprintf(p, "mem range %d: 0x%lx, %lld KB\n",
+            fprintf(p, "mem range %d: 0x%lx, %" PRIu64 " KB\n",
               i, memrange[i].addr, memrange[i].size >> 10);
   }
 
   fprintf(p, "\n--running instruction information --\n");
-    fprintf(p, "isLoad: %lld, isStore: %lld, isAtomic: %lld\n",
+    fprintf(p, "isLoad: %" PRIu64 ", isStore: %" PRIu64
+      ", isAtomic: %" PRIu64 "\n",
       instinfo[0], instinfo[1], instinfo[2]);
-    fprintf(p, "isControl: %lld, isCall: %lld, isReturn: %lld\n",
+    fprintf(p, "isControl: %" PRIu64 ", isCall: %" PRIu64
+      ", isReturn: %" PRIu64 "\n",
       instinfo[3], instinfo[4], instinfo[5]);
-    fprintf(p, "isCondCtrl: %lld, isUncondCtrl: %lld, isIndirectCtrl: %lld\n",
+    fprintf(p, "isCondCtrl: %" PRIu64 ", isUncondCtrl: %" PRIu64
+      ", isIndirectCtrl: %" PRIu64 "\n",
       instinfo[6], instinfo[7], instinfo[8]);
 
   // exit_information
@@ -481,14 +489,16 @@ void CkptInfo::saveDetailInfo()
 
 void CkptInfo::saveCkptInfo()
 {
-  char dstname[300];
+  char dstname[512];
   if (readCkptSetting)
-    sprintf(dstname, "%s_nckpt_%ld_len_%ld_warmup_%ld.info",
+    snprintf(dstname, sizeof(dstname),
+      "%s_nckpt_%" PRIu64 "_len_%" PRIu64 "_warmup_%" PRIu64 ".info",
       this->filename,
       ckptstartnum + this->startnum + this->warmup,
       length, warmup);
   else
-    sprintf(dstname, "%s_ckpt_%ld_len_%ld_warmup_%ld.info",
+    snprintf(dstname, sizeof(dstname),
+      "%s_ckpt_%" PRIu64 "_len_%" PRIu64 "_warmup_%" PRIu64 ".info",
       this->filename,
       this->startnum + this->warmup,
       length, warmup);

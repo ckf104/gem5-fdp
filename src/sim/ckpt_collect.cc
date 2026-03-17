@@ -1,5 +1,7 @@
 #include "sim/ckpt_collect.hh"
 
+#include <inttypes.h>
+
 // RISCV_Ckpt_Support: new file for configing checkpoint and running settings,
 // and collecting running information
 
@@ -41,17 +43,17 @@ void init_ckpt_settings(const char filename[])
       continue;
     }
     if (temp.find("mmapend") != temp.npos) {
-      sscanf(&str[idx+1], "%llx", &v1);
+      sscanf(&str[idx+1], "%" SCNx64, &v1);
       printf("mmapend: 0x%lx\n", v1);
       ckptsettings.mmapend = v1;
     }
     else if (temp.find("stacktop") != temp.npos) {
-      sscanf(&str[idx+1], "%llx", &v1);
+      sscanf(&str[idx+1], "%" SCNx64, &v1);
       printf("stacktop: 0x%lx\n", v1);
       ckptsettings.stack_base = v1;
     }
     else if (temp.find("brkpoint") != temp.npos) {
-      sscanf(&str[idx+1], "%llx", &v1);
+      sscanf(&str[idx+1], "%" SCNx64, &v1);
       printf("brkpoint: 0x%lx\n", v1);
       ckptsettings.brk_point = v1;
     }
@@ -62,7 +64,8 @@ void init_ckpt_settings(const char filename[])
       strcpy(ckptsettings.benchname,  &str[idx]);
     }
     else if (temp.find("ckptctrl") != temp.npos) {
-      sscanf(&str[idx+1], "%lld %lld %lld %lld", &v1, &v2, &v3, &v4);
+        sscanf(&str[idx+1], "%" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
+          &v1, &v2, &v3, &v4);
       CkptCtrl ctrl;
       for (int i=0; i<v4; i++) {
         ctrl.start = v1 + v2*i - v3;
@@ -89,7 +92,8 @@ void init_ckpt_settings(const char filename[])
   }
   sort(ckptsettings.ctrls.begin(), ckptsettings.ctrls.end(), cmp);
   for (int i=0;i<ckptsettings.ctrls.size();i++){
-    printf("ckpt info, start: %lld, end: %lld, warmup: %lld\n",
+        printf("ckpt info, start: %" PRIu64 ", end: %" PRIu64
+          ", warmup: %" PRIu64 "\n",
            ckptsettings.ctrls[i].start, ckptsettings.ctrls[i].end,
            ckptsettings.ctrls[i].warmup);
   }
@@ -166,14 +170,14 @@ void ckpt_detectOver(uint64_t exit_place, uint64_t exit_pc,
   for (vector<CkptInfo *>::iterator it = pendingCkpts.begin();
       it != pendingCkpts.end();) {
     if ((*it)->detectOver(exit_place, exit_pc, instinfo)) {
-      printf("exit ckpt start with: %llu\n", (*it)->startnum);
+      printf("exit ckpt start with: %" PRIu64 "\n", (*it)->startnum);
       delete *it;
       it = pendingCkpts.erase(it);
     } else {
       ++it;
     }
   }
-    printf("%d %d %d\n", pendingCkpts.size(), ckptidx,
+    printf("%zu %d %zu\n", pendingCkpts.size(), ckptidx,
       ckptsettings.ctrls.size());
   if (pendingCkpts.size() == 0 && ckptidx == ckptsettings.ctrls.size()){
     printf("all ckpts are created.\n");
@@ -330,7 +334,8 @@ void initCkptSysInfo(char *filename)
   infoaddr = syscall_info_addr + 8 + totalcallnum*4;
   sysidxs = (uint32_t *)(syscall_info_addr + 8);
 
-    printf("%s: text: %d, mem: %d, load: %d, sysnum: %d\n",
+        printf("%s: text: %" PRIu64 ", mem: %" PRIu64 ", load: %" PRIu64
+          ", sysnum: %" PRIu64 "\n",
       filename, numtext, nummem, numloads, totalcallnum);
 }
 
