@@ -30,10 +30,15 @@ void init_ckpt_settings(const char filename[])
 
   char str[300];
   uint64_t v1, v2, v3, v4;
-  while (!feof(p)) {
-    fgets(str, 300, p);
-    if (strlen(str) < 1) break;
-    str[strlen(str)-1] = '\0';
+  while (fgets(str, 300, p)) {
+    size_t len = strlen(str);
+    if (len == 0) continue;
+    while (len > 0 && (str[len - 1] == '\n' || str[len - 1] == '\r')) {
+      str[len - 1] = '\0';
+      len--;
+    }
+
+    v1 = v2 = v3 = v4 = 0;
 
     string temp(str);
     uint64_t idx = temp.find(":");
@@ -64,8 +69,14 @@ void init_ckpt_settings(const char filename[])
       strcpy(ckptsettings.benchname,  &str[idx]);
     }
     else if (temp.find("ckptctrl") != temp.npos) {
-        sscanf(&str[idx+1], "%" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
+      int ret = sscanf(
+          &str[idx+1],
+          "%" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
           &v1, &v2, &v3, &v4);
+      if (ret != 4) {
+        printf("invalid ckptctrl: %s\n", str);
+        continue;
+      }
       CkptCtrl ctrl;
       for (int i=0; i<v4; i++) {
         ctrl.start = v1 + v2*i - v3;
