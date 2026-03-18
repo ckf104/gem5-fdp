@@ -61,6 +61,9 @@ Linux::openSpecialFile(std::string path, Process *process,
     if (path == "/proc/meminfo") {
         data = Linux::procMeminfo(process, tc);
         matched = true;
+    } else if (path == "/proc/loadavg") {
+        data = Linux::procLoadavg(process, tc);
+        matched = true;
     } else if (path == "/etc/passwd") {
         data = Linux::etcPasswd(process, tc);
         matched = true;
@@ -110,6 +113,14 @@ std::string
 Linux::procSelfMaps(Process *process, ThreadContext *tc)
 {
     return process->memState->printVmaList();
+}
+
+std::string
+Linux::procLoadavg(Process *process, ThreadContext *tc)
+{
+    // Single-core, single-process SE simulations should report no backlog.
+    return csprintf("0.00 0.00 0.00 1/1 %llu\n",
+                    static_cast<unsigned long long>(process->pid()));
 }
 
 std::string

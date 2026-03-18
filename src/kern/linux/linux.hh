@@ -263,6 +263,7 @@ class Linux : public OperatingSystem
     static std::string procMeminfo(Process *process, ThreadContext *tc);
     static std::string etcPasswd(Process *process, ThreadContext *tc);
     static std::string procSelfMaps(Process *process, ThreadContext *tc);
+    static std::string procLoadavg(Process *process, ThreadContext *tc);
     static std::string cpuOnline(Process *process, ThreadContext *tc);
     static std::string devRandom(Process *process, ThreadContext *tc);
 
