@@ -17,6 +17,14 @@ bool cmp(CkptCtrl &ctrl1, CkptCtrl &ctrl2) {
   return ctrl1.start < ctrl2.start;
 }
 
+static inline uint64_t
+normalizeSyscallPc(uint64_t pc)
+{
+  // SyscallFault::invokeSE advances PC before workload->syscall().
+  // Convert back to the ecall PC to keep checkpoint syscall hooks aligned.
+  return (pc >= 4) ? (pc - 4) : pc;
+}
+
 void init_ckpt_settings(const char filename[])
 {
   if (strlen(filename) < 1) return ;
@@ -155,6 +163,7 @@ void ckpt_addinst(uint64_t addr)
 
 void ckpt_add_sysenter(uint64_t pc, uint32_t sysnum, vector<uint64_t> &params)
 {
+  pc = normalizeSyscallPc(pc);
   for (int i=0;i<pendingCkpts.size();i++){
     pendingCkpts[i]->add_sysenter(pc, sysnum, params);
   }
@@ -163,6 +172,7 @@ void ckpt_add_sysenter(uint64_t pc, uint32_t sysnum, vector<uint64_t> &params)
 void ckpt_add_sysexe(uint64_t pc, uint64_t ret, uint64_t bufaddr,
                      uint32_t bufsize, uint8_t data[])
 {
+  pc = normalizeSyscallPc(pc);
   for (int i=0;i<pendingCkpts.size();i++){
     pendingCkpts[i]->add_sysexe(pc, ret, bufaddr, bufsize, data);
   }
@@ -170,6 +180,7 @@ void ckpt_add_sysexe(uint64_t pc, uint64_t ret, uint64_t bufaddr,
 
 void ckpt_add_sysret(uint64_t pc, string name, bool hasret, uint64_t ret)
 {
+  pc = normalizeSyscallPc(pc);
   for (int i=0;i<pendingCkpts.size();i++){
     pendingCkpts[i]->add_sysret(pc, name, hasret, ret);
   }
@@ -311,7 +322,7 @@ void initCkptSysInfo(char *filename)
 
     uint32_t start = (range.addr - ckpt_textstart) >> 12;
     uint32_t end = start + (range.size >> 12);
-    for (start; start < end; start++) {
+      for (; start < end; start++) {
       ckptinst_map[start] = 1;
     }
   }
