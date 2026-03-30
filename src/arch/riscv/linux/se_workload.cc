@@ -188,7 +188,7 @@ unameFunc64(SyscallDesc *desc, ThreadContext *tc, VPtr<Linux::utsname> name)
         strcpy(unametemp.machine, "riscv64");
         unsigned outsize = sizeof(Linux::utsname);
         unsigned char *outdata = (unsigned char *)(&unametemp);
-        unsigned long long dstaddr = (unsigned long long)name;
+        unsigned long long dstaddr = name.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }

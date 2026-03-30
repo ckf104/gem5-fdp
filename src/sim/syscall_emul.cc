@@ -115,7 +115,7 @@ exitFutexWake(ThreadContext *tc, VPtr<> addr, uint64_t tgid)
     if (needCreateCkpt) {
         unsigned outsize = sizeof(long);
         unsigned char *outdata = (unsigned char *)(ctidBuf.bufferPtr());
-        unsigned long long dstaddr = (unsigned long long)addr;
+        unsigned long long dstaddr = addr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -340,7 +340,7 @@ _llseekFunc(SyscallDesc *desc, ThreadContext *tc,
     if (needCreateCkpt && result != (off_t)-1) {
         unsigned outsize = sizeof(result);
         unsigned char *outdata = (unsigned char *)(result_buf.bufferPtr());
-        unsigned long long dstaddr = (unsigned long long)result_ptr;
+        unsigned long long dstaddr = result_ptr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -360,7 +360,7 @@ gethostnameFunc(SyscallDesc *desc, ThreadContext *tc,
     if (needCreateCkpt) {
         unsigned outsize = name_len;
         unsigned char *outdata = (unsigned char *)(name.bufferPtr());
-        unsigned long long dstaddr = (unsigned long long)buf_ptr;
+        unsigned long long dstaddr = buf_ptr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -763,7 +763,7 @@ pipe2Func(SyscallDesc *desc, ThreadContext *tc, VPtr<> tgt_addr, int flags)
     if (needCreateCkpt) {
         unsigned outsize = sizeof(int[2]);
         unsigned char *outdata = (unsigned char *)(tgt_handle.bufferPtr());
-        unsigned long long dstaddr = (unsigned long long)tgt_addr;
+        unsigned long long dstaddr = tgt_addr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -1034,7 +1034,7 @@ getdentsImpl(SyscallDesc *desc, ThreadContext *tc,
     if (needCreateCkpt) {
         unsigned outsize = count;
         unsigned char *outdata = (unsigned char *)(buf_arg.bufferPtr());
-        unsigned long long dstaddr = (unsigned long long)buf_ptr;
+        unsigned long long dstaddr = buf_ptr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }

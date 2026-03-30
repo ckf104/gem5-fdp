@@ -1008,7 +1008,7 @@ getcwdFunc(SyscallDesc *desc, ThreadContext *tc,
     if (needCreateCkpt) {
         unsigned outsize = size;
         unsigned char *outdata = (unsigned char *)(buf.bufferPtr());
-        unsigned long long dstaddr = (unsigned long long)buf_ptr;
+        unsigned long long dstaddr = buf_ptr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), result, dstaddr, outsize, outdata);
     }
@@ -1140,7 +1140,7 @@ readlinkatFunc(SyscallDesc *desc, ThreadContext *tc,
     if (needCreateCkpt && result != -1) {
         unsigned outsize = result;
         unsigned char *outdata = (unsigned char *)(buf.bufferPtr());
-        unsigned long long dstaddr = (unsigned long long)buf_ptr;
+        unsigned long long dstaddr = buf_ptr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), result, dstaddr, outsize, outdata);
     }
@@ -1306,7 +1306,7 @@ sysinfoFunc(SyscallDesc *desc, ThreadContext *tc,
         tempinfo.mem_unit = 1;
         unsigned outsize = sizeof(tempinfo);
         unsigned char *outdata = (unsigned char *)(&tempinfo);
-        unsigned long long dstaddr = (unsigned long long)sysinfo;
+        unsigned long long dstaddr = sysinfo.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -1426,7 +1426,7 @@ pollFunc(SyscallDesc *desc, ThreadContext *tc,
     if (needCreateCkpt) {
         unsigned outsize = sizeof(struct pollfd) * nfds;
         unsigned char *outdata = (unsigned char *)(fdsBuf.bufferPtr());
-        unsigned long long dstaddr = (unsigned long long)fdsPtr;
+        unsigned long long dstaddr = fdsPtr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), status, dstaddr, outsize, outdata);
     }
@@ -1565,7 +1565,7 @@ statFunc(SyscallDesc *desc, ThreadContext *tc,
         copyOutStatBuf<OS>(&temp_stat, &hostBuf);
         unsigned outsize = sizeof(temp_stat);
         unsigned char *outdata = (unsigned char *)(&temp_stat);
-        unsigned long long dstaddr = (unsigned long long)tgt_stat;
+        unsigned long long dstaddr = tgt_stat.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), result, dstaddr, outsize, outdata);
     }
@@ -1614,7 +1614,7 @@ newfstatatFunc(SyscallDesc *desc, ThreadContext *tc, int dirfd,
         copyOutStat64Buf<OS>(&temp_stat, &host_buf);
         unsigned outsize = sizeof(temp_stat);
         unsigned char *outdata = (unsigned char *)(&temp_stat);
-        unsigned long long dstaddr = (unsigned long long)tgt_stat;
+        unsigned long long dstaddr = tgt_stat.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), result, dstaddr, outsize, outdata);
     }
@@ -1661,7 +1661,7 @@ fstatat64Func(SyscallDesc *desc, ThreadContext *tc,
         copyOutStat64Buf<OS>(&temp_stat, &hostBuf);
         unsigned outsize = sizeof(temp_stat);
         unsigned char *outdata = (unsigned char *)(&temp_stat);
-        unsigned long long dstaddr = (unsigned long long)tgt_stat;
+        unsigned long long dstaddr = tgt_stat.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), result, dstaddr, outsize, outdata);
     }
@@ -1748,7 +1748,7 @@ fstat64Func(SyscallDesc *desc, ThreadContext *tc,
         copyOutStat64Buf<OS>(&temp_stat, &hostBuf, (sim_fd == 1));
         unsigned outsize = sizeof(temp_stat);
         unsigned char *outdata = (unsigned char *)(&temp_stat);
-        unsigned long long dstaddr = (unsigned long long)tgt_stat;
+        unsigned long long dstaddr = tgt_stat.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -1816,7 +1816,7 @@ lstat64Func(SyscallDesc *desc, ThreadContext *tc,
         copyOutStat64Buf<OS>(&temp_stat, &hostBuf);
         unsigned outsize = sizeof(temp_stat);
         unsigned char *outdata = (unsigned char *)(&temp_stat);
-        unsigned long long dstaddr = (unsigned long long)tgt_stat;
+        unsigned long long dstaddr = tgt_stat.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), result, dstaddr, outsize, outdata);
     }
@@ -1878,7 +1878,7 @@ statfsFunc(SyscallDesc *desc, ThreadContext *tc,
         copyOutStatfsBuf<OS>(&temp_stat, &hostBuf);
         unsigned outsize = sizeof(temp_stat);
         unsigned char *outdata = (unsigned char *)(&temp_stat);
-        unsigned long long dstaddr = (unsigned long long)tgt_stat;
+        unsigned long long dstaddr = tgt_stat.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -2065,7 +2065,7 @@ fstatfsFunc(SyscallDesc *desc, ThreadContext *tc,
         copyOutStatfsBuf<OS>(&temp_stat, &hostBuf);
         unsigned outsize = sizeof(temp_stat);
         unsigned char *outdata = (unsigned char *)(&temp_stat);
-        unsigned long long dstaddr = (unsigned long long)tgt_stat;
+        unsigned long long dstaddr = tgt_stat.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -2310,7 +2310,7 @@ pread64Func(SyscallDesc *desc, ThreadContext *tc,
         uint64_t datasize = bytes_read > 0 ? bytes_read : 0;
         unsigned char *outdata = (unsigned char *)bufArg.bufferPtr();
         ckpt_add_sysexe(tc->pcState().instAddr(), bytes_read,
-                        (uint64_t)bufPtr, datasize, outdata);
+                        bufPtr.addr(), datasize, outdata);
     }
 
     bufArg.copyOut(SETranslatingPortProxy(tc));
@@ -2389,7 +2389,7 @@ getrlimitFunc(SyscallDesc *desc, ThreadContext *tc,
         typename OS::rlimit temp = *rlp;
         unsigned outsize = sizeof(temp);
         unsigned char *outdata = (unsigned char *)(&temp);
-        unsigned long long dstaddr = (unsigned long long)rlp;
+        unsigned long long dstaddr = rlp.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -2433,7 +2433,7 @@ prlimitFunc(SyscallDesc *desc, ThreadContext *tc,
             typename OS::rlimit temp = *rlp;
             unsigned outsize = sizeof(temp);
             unsigned char *outdata = (unsigned char *)(&temp);
-            unsigned long long dstaddr = (unsigned long long)rlp;
+            unsigned long long dstaddr = rlp.addr();
             ckpt_add_sysexe(
                 tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
         }
@@ -2458,7 +2458,7 @@ clock_gettimeFunc(SyscallDesc *desc, ThreadContext *tc,
         tp_temp.tv_sec += seconds_since_epoch;
         unsigned outsize = sizeof(tp_temp);
         unsigned char *outdata = (unsigned char *)(&tp_temp);
-        unsigned long long dstaddr = (unsigned long long)tp;
+        unsigned long long dstaddr = tp.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -2482,7 +2482,7 @@ clock_getresFunc(SyscallDesc *desc, ThreadContext *tc, int clk_id,
         tp_temp.tv_nsec = 1;
         unsigned outsize = sizeof(tp_temp);
         unsigned char *outdata = (unsigned char *)(&tp_temp);
-        unsigned long long dstaddr = (unsigned long long)tp;
+        unsigned long long dstaddr = tp.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -2507,7 +2507,7 @@ gettimeofdayFunc(SyscallDesc *desc, ThreadContext *tc,
         tp_temp.tv_sec += seconds_since_epoch;
         unsigned outsize = sizeof(tp_temp);
         unsigned char *outdata = (unsigned char *)(&tp_temp);
-        unsigned long long dstaddr = (unsigned long long)tp;
+        unsigned long long dstaddr = tp.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -2705,7 +2705,7 @@ getrusageFunc(SyscallDesc *desc, ThreadContext *tc,
         typename OS::rusage temp = *rup;
         unsigned outsize = sizeof(temp);
         unsigned char *outdata = (unsigned char *)(&temp);
-        unsigned long long dstaddr = (unsigned long long)rup;
+        unsigned long long dstaddr = rup.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), 0, dstaddr, outsize, outdata);
     }
@@ -2736,7 +2736,7 @@ timesFunc(SyscallDesc *desc, ThreadContext *tc, VPtr<typename OS::tms> bufp)
         temp.tms_cstime = 0;
         unsigned outsize = sizeof(temp);
         unsigned char *outdata = (unsigned char *)(&temp);
-        unsigned long long dstaddr = (unsigned long long)bufp;
+        unsigned long long dstaddr = bufp.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), clocks, dstaddr, outsize, outdata);
     }
@@ -2764,7 +2764,7 @@ timeFunc(SyscallDesc *desc, ThreadContext *tc, VPtr<> taddr)
     if (needCreateCkpt) {
         unsigned outsize = sizeof(typename OS::time_t);
         unsigned char *outdata = (unsigned char *)(&sec);
-        unsigned long long dstaddr = (unsigned long long)taddr;
+        unsigned long long dstaddr = taddr.addr();
         ckpt_add_sysexe(
             tc->pcState().instAddr(), sec, dstaddr, outsize, outdata);
     }
@@ -3060,7 +3060,7 @@ readFunc(SyscallDesc *desc, ThreadContext *tc,
         unsigned char *data1 = (unsigned char *)buf_arg.bufferPtr();
         uint64_t datasize = bytes_read > 0 ? bytes_read : 0;
         ckpt_add_sysexe(tc->pcState().instAddr(), bytes_read,
-                        (uint64_t)buf_ptr, datasize, data1);
+                        buf_ptr.addr(), datasize, data1);
     }
 
     if (bytes_read > 0)
