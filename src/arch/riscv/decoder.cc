@@ -28,8 +28,18 @@
  */
 
 #include "arch/riscv/decoder.hh"
+
 #include "arch/riscv/insts/zcmt.hh"
 #include "arch/riscv/isa.hh"
+
+#ifndef Support_ReadCkpt_TempRegs
+#define Support_ReadCkpt_TempRegs 1
+#endif
+
+#if Support_ReadCkpt_TempRegs
+#include "arch/riscv/regs/int.hh"
+
+#endif
 #include "arch/riscv/types.hh"
 #include "base/bitfield.hh"
 #include "debug/Decode.hh"
@@ -119,6 +129,54 @@ Decoder::decode(ExtMachInst mach_inst, Addr addr)
 {
     DPRINTF(Decode, "Decoding instruction 0x%08x at address %#x\n",
             mach_inst.instBits, addr);
+
+#if Support_ReadCkpt_TempRegs
+    // Pseudo ops encoded as addi x0, rs1, imm12:
+    // imm=9..12:  write rs1 into TMP1..TMP4
+    // imm=36..39: read TMP1..TMP4 into rs1
+    // imm=64:     jump to TMP(rs1[1:0]+1)
+    constexpr uint32_t tempAddInstBits = 0x80b3;  // add x1, x1, x0
+    constexpr uint32_t tempJalrInstBits = 0x8067; // jalr x0, 0(x1)
+
+    const bool is_uncompressed = !compressed(mach_inst);
+    const uint32_t inst_bits = mach_inst.instBits;
+    const uint32_t opcode = bits(inst_bits, 6, 0);
+    const uint32_t rd = bits(inst_bits, 11, 7);
+    const uint32_t func3 = bits(inst_bits, 14, 12);
+    const uint32_t rs1 = bits(inst_bits, 19, 15);
+    const uint32_t imm12 = bits(inst_bits, 31, 20);
+
+    const bool is_new_inst =
+        is_uncompressed && (opcode == 0x13) && (func3 == 0x0) && (rd == 0);
+    const bool is_wtemp = is_new_inst && (imm12 >= 9) && (imm12 <= 12);
+    const bool is_rtemp = is_new_inst && (imm12 >= 36) && (imm12 <= 39);
+    const bool is_jtemp = is_new_inst && (imm12 == 64);
+
+    if (is_wtemp || is_rtemp || is_jtemp) {
+        ExtMachInst rewritten = mach_inst;
+        rewritten.instBits = is_jtemp ? tempJalrInstBits : tempAddInstBits;
+
+        StaticInstPtr si = decodeInst(rewritten);
+        si->size(4);
+
+        if (is_rtemp) {
+            const auto temp_idx = int_reg::_TMP1Idx + (imm12 - 36);
+            si->setSrcRegIdx(0, intRegClass[temp_idx]);
+            si->setDestRegIdx(0, intRegClass[rs1]);
+        } else if (is_wtemp) {
+            const auto temp_idx = int_reg::_TMP1Idx + (imm12 - 9);
+            si->setSrcRegIdx(0, intRegClass[rs1]);
+            si->setDestRegIdx(0, intRegClass[temp_idx]);
+        } else {
+            const auto temp_idx = int_reg::_TMP1Idx + (rs1 % 4);
+            si->setSrcRegIdx(0, intRegClass[temp_idx]);
+        }
+
+        DPRINTF(Decode, "Decode: Decoded %s instruction: %#x\n",
+                si->getName(), rewritten);
+        return si;
+    }
+#endif
 
     StaticInstPtr &si = instMap[mach_inst];
     if (!si)
