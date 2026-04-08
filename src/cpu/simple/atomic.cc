@@ -386,6 +386,7 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t *data, unsigned size,
     Addr frag_addr = addr;
     int frag_size = 0;
     int size_left = size;
+    uint8_t *const base_data = data;
     bool predicate;
     Fault fault = NoFault;
 
@@ -432,7 +433,7 @@ AtomicSimpleCPU::readMem(Addr addr, uint8_t *data, unsigned size,
             }
 
             if (needCreateCkpt && startlog) {
-                ckpt_addload(addr, data, size);
+                ckpt_addload(addr, base_data, size);
             }
             return fault;
         }
@@ -461,10 +462,6 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
         assert(flags & Request::STORE_NO_DATA);
         // This must be a cache block cleaning request
         data = zero_array;
-    }
-
-    if (needCreateCkpt && startlog) {
-        ckpt_addstore(addr, size);
     }
 
     // use the CPU's statically allocated write request and packet objects
@@ -525,6 +522,11 @@ AtomicSimpleCPU::writeMem(uint8_t *data, unsigned size, Addr addr,
                 dcache_access = true;
                 panic_if(pkt.isError(), "Data write (%s) failed: %s",
                         pkt.getAddrRange().to_string(), pkt.print());
+
+                if (needCreateCkpt && startlog) {
+                    ckpt_addstore(frag_addr, frag_size);
+                }
+
                 if (req->isSwap()) {
                     assert(res && curr_frag_id == 0);
                     memcpy(res, pkt.getConstPtr<uint8_t>(), size);
@@ -621,7 +623,8 @@ AtomicSimpleCPU::amoMem(Addr addr, uint8_t* data, unsigned size,
         return NoFault;
     }
 
-    if (needCreateCkpt && startlog) {
+    if (needCreateCkpt && startlog && fault == NoFault &&
+        !req->getFlags().isSet(Request::NO_ACCESS)) {
         ckpt_addload(addr, data, size);
     }
 
