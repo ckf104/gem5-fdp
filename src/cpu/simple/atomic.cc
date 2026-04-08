@@ -96,6 +96,8 @@ AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     benchinsts = 0;
     takeSysNum = 0;
     last_isBenchInst = false;
+    checkpointInstBase = 0;
+    checkpointInstBaseInitialized = false;
     for (int i = 0; i < 10; i++)
         instnums[i] = 0;
 }
@@ -637,6 +639,11 @@ AtomicSimpleCPU::tick()
 {
     DPRINTF(SimpleCPU, "Tick\n");
 
+    if (!checkpointInstBaseInitialized) {
+        checkpointInstBase = instCount();
+        checkpointInstBaseInitialized = true;
+    }
+
     // Change thread if multi-threaded
     swapActiveThread();
 
@@ -711,6 +718,9 @@ AtomicSimpleCPU::tick()
 
                 bool isBenchInst = true;
                 uint64_t numInst = t_info.numInst;
+                if (!readCkptSetting) {
+                    numInst += checkpointInstBase;
+                }
                 startlog = hasValidCkpt();
                 needCreateCkpt = startlog;
 

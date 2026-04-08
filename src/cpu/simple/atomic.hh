@@ -67,6 +67,8 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     bool startlog = false;
     std::set<Addr> preinsts;
     uint64_t instnums[10];
+    uint64_t checkpointInstBase;
+    bool checkpointInstBaseInitialized;
     void
     recordinst(StaticInstPtr inst)
     {

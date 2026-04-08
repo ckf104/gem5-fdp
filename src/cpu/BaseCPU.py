@@ -69,6 +69,7 @@ class BaseCPU(ClockedObject):
         PyBindMethod("takeOverFrom"),
         PyBindMethod("switchedOut"),
         PyBindMethod("flushTLBs"),
+        PyBindMethod("instCount"),
         PyBindMethod("totalInsts"),
         PyBindMethod("scheduleInstStop"),
         PyBindMethod("getCurrentInstCount"),

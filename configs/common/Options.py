@@ -547,6 +547,21 @@ def addCommonOptions(parser, default_isa: Optional[ISA] = None):
         help="<M,N> take checkpoints at tick M and every N ticks thereafter",
     )
     parser.add_argument(
+        "--take-checkpoint-insts",
+        action="store",
+        type=int,
+        default=None,
+        help="take a checkpoint after the specified number of instructions "
+        "relative to the current run/restored checkpoint",
+    )
+    parser.add_argument(
+        "--take-checkpoint-insts-exit",
+        action="store_true",
+        default=False,
+        help="exit immediately after taking a checkpoint requested by "
+        "--take-checkpoint-insts",
+    )
+    parser.add_argument(
         "--max-checkpoints",
         action="store",
         type=int,

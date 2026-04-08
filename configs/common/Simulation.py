@@ -217,32 +217,48 @@ def findCptDir(options, cptdir, testsys):
     return cpt_starttick, checkpoint_dir
 
 
-def scriptCheckpoints(options, maxtick, cptdir):
-    if options.at_instruction or options.simpoint:
-        checkpoint_inst = int(options.take_checkpoints)
+def takeInstructionCheckpoint(
+    options,
+    maxtick,
+    cptdir,
+    checkpoint_offset,
+    restore_inst_count=0,
+    exit_after_checkpoint=True,
+):
+    checkpoint_inst = restore_inst_count + checkpoint_offset
 
-        # maintain correct offset if we restored from some instruction
-        if options.checkpoint_restore != None:
-            checkpoint_inst += options.checkpoint_restore
+    print("Creating checkpoint at inst:%d" % (checkpoint_inst))
+    exit_event = m5.simulate()
+    exit_cause = exit_event.getCause()
+    print(f"exit cause = {exit_cause}")
 
-        print("Creating checkpoint at inst:%d" % (checkpoint_inst))
+    # skip checkpoint instructions should they exist
+    while exit_cause == "checkpoint":
         exit_event = m5.simulate()
         exit_cause = exit_event.getCause()
-        print(f"exit cause = {exit_cause}")
 
-        # skip checkpoint instructions should they exist
-        while exit_cause == "checkpoint":
-            exit_event = m5.simulate()
-            exit_cause = exit_event.getCause()
+    if exit_cause == "a thread reached the max instruction count":
+        m5.checkpoint(
+            joinpath(cptdir, "cpt.%s.%d" % (options.bench, checkpoint_inst))
+        )
+        print("Checkpoint written.")
 
-        if exit_cause == "a thread reached the max instruction count":
-            m5.checkpoint(
-                joinpath(
-                    cptdir, "cpt.%s.%d" % (options.bench, checkpoint_inst)
-                )
-            )
-            print("Checkpoint written.")
+        if not exit_after_checkpoint:
+            return benchCheckpoints(options, maxtick, cptdir)
 
+    return exit_event
+
+
+def scriptCheckpoints(options, maxtick, cptdir, restore_inst_count=0):
+    if options.at_instruction or options.simpoint:
+        return takeInstructionCheckpoint(
+            options,
+            maxtick,
+            cptdir,
+            int(options.take_checkpoints),
+            restore_inst_count=restore_inst_count,
+            exit_after_checkpoint=True,
+        )
     else:
         when, period = options.take_checkpoints.split(",", 1)
         when = int(when)
@@ -280,7 +296,7 @@ def scriptCheckpoints(options, maxtick, cptdir):
                     m5.checkpoint(joinpath(cptdir, "cpt.%d"))
                     num_checkpoints += 1
 
-    return exit_event
+        return exit_event
 
 
 def benchCheckpoints(options, maxtick, cptdir):
@@ -490,6 +506,33 @@ def run(options, root, testsys, cpu_class):
 
     if options.repeat_switch and options.take_checkpoints:
         fatal("Can't specify both --repeat-switch and --take-checkpoints")
+    if options.repeat_switch and options.take_checkpoint_insts:
+        fatal("Can't specify both --repeat-switch and --take-checkpoint-insts")
+    if options.take_checkpoint_insts is not None and options.take_checkpoints:
+        fatal(
+            "Can't specify both --take-checkpoints and "
+            "--take-checkpoint-insts"
+        )
+    if (
+        options.take_checkpoint_insts is not None
+        and options.take_simpoint_checkpoints is not None
+    ):
+        fatal(
+            "Can't specify both --take-simpoint-checkpoints and "
+            "--take-checkpoint-insts"
+        )
+    if (
+        options.take_checkpoint_insts is not None
+        and options.take_checkpoint_insts <= 0
+    ):
+        fatal("--take-checkpoint-insts must be greater than zero")
+    if (
+        options.take_checkpoint_insts is None
+        and options.take_checkpoint_insts_exit
+    ):
+        fatal(
+            "--take-checkpoint-insts-exit requires " "--take-checkpoint-insts"
+        )
 
     # Setup global stat filtering.
     stat_root_simobjs = []
@@ -673,6 +716,10 @@ def run(options, root, testsys, cpu_class):
             for i in range(np):
                 testsys.cpu[i].max_insts_any_thread = offset
 
+    if options.take_checkpoint_insts is not None:
+        for i in range(np):
+            testsys.cpu[i].max_insts_any_thread = options.take_checkpoint_insts
+
     if options.take_simpoint_checkpoints != None:
         simpoints, interval_length = parseSimpointAnalysisFile(
             options, testsys
@@ -683,6 +730,7 @@ def run(options, root, testsys, cpu_class):
         cpt_starttick, checkpoint_dir = findCptDir(options, cptdir, testsys)
     root.apply_config(options.param)
     m5.instantiate(checkpoint_dir)
+    restored_inst_count = int(testsys.cpu[0].instCount())
 
     # Initialization is complete.  If we're not in control of simulation
     # (that is, if we're a slave simulator acting as a component in another
@@ -777,19 +825,36 @@ def run(options, root, testsys, cpu_class):
     # lets us test checkpointing by restoring from one set of
     # checkpoints, generating a second set, and then comparing them.
     if (
-        options.take_checkpoints or options.take_simpoint_checkpoints
+        options.take_checkpoint_insts
+        or options.take_checkpoints
+        or options.take_simpoint_checkpoints
     ) and options.checkpoint_restore:
         if m5.options.outdir:
             cptdir = m5.options.outdir
         else:
             cptdir = getcwd()
 
-    if options.take_checkpoints != None:
+    if options.take_checkpoint_insts != None:
+        exit_event = takeInstructionCheckpoint(
+            options,
+            maxtick,
+            cptdir,
+            options.take_checkpoint_insts,
+            restore_inst_count=restored_inst_count,
+            exit_after_checkpoint=options.take_checkpoint_insts_exit,
+        )
+
+    elif options.take_checkpoints != None:
         # Checkpoints being taken via the command line at <when> and at
         # subsequent periods of <period>.  Checkpoint instructions
         # received from the benchmark running are ignored and skipped in
         # favor of command line checkpoint instructions.
-        exit_event = scriptCheckpoints(options, maxtick, cptdir)
+        exit_event = scriptCheckpoints(
+            options,
+            maxtick,
+            cptdir,
+            restore_inst_count=restored_inst_count,
+        )
 
     # Take SimPoint checkpoints
     elif options.take_simpoint_checkpoints != None:
