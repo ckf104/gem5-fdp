@@ -357,6 +357,9 @@ else:
     system.membus = SystemXBar()
     system.system_port = system.membus.cpu_side_ports
     CacheConfig.config_cache(args, system)
+    if args.boom_config and args.l2cache:
+        # L1-L2 cache bus width for BOOM-style configuration.
+        system.tol2bus.width = 16
     MemConfig.config_mem(args, system)
     config_filesystem(system, args)
 
