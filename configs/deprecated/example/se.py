@@ -72,6 +72,10 @@ from common.FileSystemConfig import config_filesystem
 from ruby import Ruby
 
 
+def is_atomic_simple_cpu(cpu_cls):
+    return cpu_cls is not None and issubclass(cpu_cls, BaseAtomicSimpleCPU)
+
+
 def get_processes(args):
     """Interprets provided args and returns a list of processes"""
 
@@ -134,6 +138,12 @@ warn(
 parser = argparse.ArgumentParser()
 Options.addCommonOptions(parser)
 Options.addSEOptions(parser)
+parser.add_argument(
+    "--atomic-width",
+    type=int,
+    default=None,
+    help="Set the width of AtomicSimpleCPU when it is used in this script",
+)
 
 if "--ruby" in sys.argv:
     Ruby.define_options(parser)
@@ -180,6 +190,14 @@ else:
 (CPUClass, test_mem_mode, FutureClass) = Simulation.setCPUClass(args)
 CPUClass.numThreads = numThreads
 
+if args.atomic_width is not None:
+    if args.atomic_width <= 0:
+        fatal("--atomic-width must be greater than zero")
+    if not (
+        is_atomic_simple_cpu(CPUClass) or is_atomic_simple_cpu(FutureClass)
+    ):
+        fatal("--atomic-width requires AtomicSimpleCPU")
+
 # Check -- do not allow SMT with multiple CPUs
 if args.smt and args.num_cpus > 1:
     fatal("You cannot use SMT with multiple CPUs!")
@@ -192,6 +210,10 @@ system = System(
     mem_ranges=[AddrRange(args.mem_size)],
     cache_line_size=args.cacheline_size,
 )
+
+if args.atomic_width is not None and is_atomic_simple_cpu(CPUClass):
+    for cpu in system.cpu:
+        cpu.width = args.atomic_width
 
 if numThreads > 1:
     system.multi_thread = True

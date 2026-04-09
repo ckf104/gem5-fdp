@@ -101,6 +101,17 @@ def setMemClass(options):
     return ObjectList.mem_list.get(options.mem_type)
 
 
+def isAtomicSimpleCPU(cpu_cls):
+    return cpu_cls is not None and issubclass(cpu_cls, BaseAtomicSimpleCPU)
+
+
+def setAtomicWidth(cpus, width):
+    if width is None:
+        return
+    for cpu in cpus:
+        cpu.width = width
+
+
 def setWorkCountOptions(system, options):
     if options.work_item_id != None:
         system.work_item_id = options.work_item_id
@@ -562,6 +573,8 @@ def run(options, root, testsys, cpu_class):
         switch_cpus = [
             cpu_class(switched_out=True, cpu_id=(i)) for i in range(np)
         ]
+        if isAtomicSimpleCPU(cpu_class):
+            setAtomicWidth(switch_cpus, getattr(options, "atomic_width", None))
 
         for i in range(np):
             if options.fast_forward:
@@ -609,6 +622,10 @@ def run(options, root, testsys, cpu_class):
         repeat_switch_cpus = [
             switch_class(switched_out=True, cpu_id=(i)) for i in range(np)
         ]
+        if isAtomicSimpleCPU(switch_class):
+            setAtomicWidth(
+                repeat_switch_cpus, getattr(options, "atomic_width", None)
+            )
 
         for i in range(np):
             repeat_switch_cpus[i].system = testsys
@@ -642,6 +659,12 @@ def run(options, root, testsys, cpu_class):
         switch_cpus_1 = [
             DerivO3CPU(switched_out=True, cpu_id=(i)) for i in range(np)
         ]
+        if isAtomicSimpleCPU(TimingSimpleCPU):
+            setAtomicWidth(switch_cpus, getattr(options, "atomic_width", None))
+        if isAtomicSimpleCPU(DerivO3CPU):
+            setAtomicWidth(
+                switch_cpus_1, getattr(options, "atomic_width", None)
+            )
 
         for i in range(np):
             switch_cpus[i].system = testsys
