@@ -97,7 +97,6 @@ AtomicSimpleCPU::AtomicSimpleCPU(const BaseAtomicSimpleCPUParams &p)
     takeSysNum = 0;
     last_isBenchInst = false;
     checkpointInstBase = 0;
-    checkpointInstBaseInitialized = false;
     for (int i = 0; i < 10; i++)
         instnums[i] = 0;
 }
@@ -183,6 +182,13 @@ AtomicSimpleCPU::drainResume()
     schedulePowerGatingEvent();
 }
 
+void
+AtomicSimpleCPU::unserialize(CheckpointIn &cp)
+{
+    BaseSimpleCPU::unserialize(cp);
+    checkpointInstBase = instCount();
+}
+
 bool
 AtomicSimpleCPU::tryCompleteDrain()
 {
@@ -215,6 +221,10 @@ void
 AtomicSimpleCPU::takeOverFrom(BaseCPU *old_cpu)
 {
     BaseSimpleCPU::takeOverFrom(old_cpu);
+
+    // BaseCPU::takeOverFrom() does not migrate instCnt to the new CPU.
+    // Keep the checkpoint instruction baseline aligned after switchCpus().
+    checkpointInstBase = old_cpu->instCount();
 
     // The tick event should have been descheduled by drain()
     assert(!tickEvent.scheduled());
@@ -638,11 +648,6 @@ void
 AtomicSimpleCPU::tick()
 {
     DPRINTF(SimpleCPU, "Tick\n");
-
-    if (!checkpointInstBaseInitialized) {
-        checkpointInstBase = instCount();
-        checkpointInstBaseInitialized = true;
-    }
 
     // Change thread if multi-threaded
     swapActiveThread();

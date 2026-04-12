@@ -68,7 +68,6 @@ class AtomicSimpleCPU : public BaseSimpleCPU
     std::set<Addr> preinsts;
     uint64_t instnums[10];
     uint64_t checkpointInstBase;
-    bool checkpointInstBaseInitialized;
     void
     recordinst(StaticInstPtr inst)
     {
@@ -222,6 +221,7 @@ class AtomicSimpleCPU : public BaseSimpleCPU
 
     DrainState drain() override;
     void drainResume() override;
+    void unserialize(CheckpointIn &cp) override;
 
     void switchOut() override;
     void takeOverFrom(BaseCPU *old_cpu) override;
