@@ -61,6 +61,10 @@ namespace RiscvISA
 namespace int_reg
 {
 
+#ifndef Support_ReadCkpt_TempRegs
+#define Support_ReadCkpt_TempRegs 1
+#endif
+
 enum : RegIndex
 {
     _ZeroIdx, _RaIdx, _SpIdx,  _GpIdx,
@@ -71,6 +75,10 @@ enum : RegIndex
     _S4Idx,   _S5Idx, _S6Idx,  _S7Idx,
     _S8Idx,   _S9Idx, _S10Idx, _S11Idx,
     _T3Idx,   _T4Idx, _T5Idx,  _T6Idx,
+
+#if Support_ReadCkpt_TempRegs
+    _TMP1Idx, _TMP2Idx, _TMP3Idx, _TMP4Idx,
+#endif
 
     NumArchRegs,
 
@@ -120,6 +128,12 @@ inline constexpr RegId
     T4 = intRegClass[_T4Idx],
     T5 = intRegClass[_T5Idx],
     T6 = intRegClass[_T6Idx],
+#if Support_ReadCkpt_TempRegs
+    TMP1 = intRegClass[_TMP1Idx],
+    TMP2 = intRegClass[_TMP2Idx],
+    TMP3 = intRegClass[_TMP3Idx],
+    TMP4 = intRegClass[_TMP4Idx],
+#endif
     Ureg0 = intRegClass[_Ureg0Idx];
 
 const std::vector<std::string> RegNames = {
@@ -131,6 +145,9 @@ const std::vector<std::string> RegNames = {
     "s4", "s5", "s6", "s7",
     "s8", "s9", "s10", "s11",
     "t3", "t4", "t5", "t6"
+#if Support_ReadCkpt_TempRegs
+    , "tmp1", "tmp2", "tmp3", "tmp4"
+#endif
 };
 
 } // namespace int_reg
