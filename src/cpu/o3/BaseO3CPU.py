@@ -84,6 +84,12 @@ class BaseO3CPU(BaseCPU):
         "starts counting after the first committed addi x0, x0, 127.",
     )
 
+    maxInstsAfterWarmup = Param.Counter(
+        0,
+        "Max committed instructions to run after warmup completes "
+        "(0 disables this limit).",
+    )
+
     activity = Param.Unsigned(0, "Initial count")
 
     cacheStorePorts = Param.Unsigned(

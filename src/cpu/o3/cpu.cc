@@ -133,6 +133,7 @@ CPU::CPU(const BaseO3CPUParams &params)
       cpuStats(this)
 {
     warmupInst = params.warmupInst;
+    maxInstsAfterWarmup = params.maxInstsAfterWarmup;
 
     fatal_if(params.isa[0]->getIsaName() != "riscv",
             "O3 warmup magic trigger only supports the RISC-V ISA.");
@@ -1181,6 +1182,10 @@ CPU::instDone(ThreadID tid, const DynInstPtr &inst)
                         static_cast<unsigned long long>(warmupInst));
 
                 statistics::schedStatEvent(false, true);
+
+                if (maxInstsAfterWarmup > 0) {
+                    scheduleInstStopAnyThread(maxInstsAfterWarmup);
+                }
             }
         }
     }

@@ -133,6 +133,14 @@ warn(
 parser = argparse.ArgumentParser()
 Options.addCommonOptions(parser)
 Options.addSEOptions(parser)
+parser.add_argument(
+    "--maxinsts-after-warmup",
+    action="store",
+    type=int,
+    default=None,
+    help="Terminate after this many committed instructions after warmup "
+    "completes (SE O3 only).",
+)
 
 if "--ruby" in sys.argv:
     Ruby.define_options(parser)
@@ -178,6 +186,19 @@ else:
 
 (CPUClass, test_mem_mode, FutureClass) = Simulation.setCPUClass(args)
 CPUClass.numThreads = numThreads
+
+if args.maxinsts_after_warmup is not None:
+    if args.maxinsts is not None:
+        fatal("--maxinsts and --maxinsts-after-warmup are mutually exclusive")
+    if args.maxinsts_after_warmup <= 0:
+        fatal("--maxinsts-after-warmup must be a positive integer")
+    if args.warmup_before_stats <= 0:
+        fatal(
+            "--maxinsts-after-warmup requires --warmup-before-stats "
+            "to be greater than 0"
+        )
+    if not ObjectList.is_o3_cpu(CPUClass):
+        fatal("--maxinsts-after-warmup requires an O3 CPU")
 
 # Check -- do not allow SMT with multiple CPUs
 if args.smt and args.num_cpus > 1:
@@ -225,6 +246,8 @@ for cpu in system.cpu:
     cpu.fetchWidth = args.fetchWidth
     cpu.decodeWidth = args.decodeWidth
     cpu.warmupInst = args.warmup_before_stats
+    if args.maxinsts_after_warmup is not None:
+        cpu.maxInstsAfterWarmup = args.maxinsts_after_warmup
 
     if args.boom_config:
         cpu.fetchBufferSize = 8
