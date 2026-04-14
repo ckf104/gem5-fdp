@@ -393,6 +393,7 @@ class CPU : public BaseCPU
 #endif
 
     uint64_t warmupInst = 0;
+    Counter maxInstsAfterWarmup = 0;
     bool warmup = false;
     bool riscvWarmupTriggerSeen = false;
     Counter riscvWarmupStartInst = 0;
