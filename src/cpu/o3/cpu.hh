@@ -390,6 +390,8 @@ class CPU : public BaseCPU
 
     uint64_t warmupInst = 0;
     bool warmup = false;
+    bool riscvWarmupTriggerSeen = false;
+    Counter riscvWarmupStartInst = 0;
 
     /** List of all the instructions in flight. */
     std::list<DynInstPtr> instList;

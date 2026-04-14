@@ -79,7 +79,9 @@ class BaseO3CPU(BaseCPU):
         return True
 
     warmupInst = Param.Unsigned(
-        0, "Number of instructions to simulate before stats start"
+        0,
+        "Warmup instructions before auto stats reset; for O3 RISC-V this "
+        "starts counting after the first committed addi x0, x0, 127.",
     )
 
     activity = Param.Unsigned(0, "Initial count")
