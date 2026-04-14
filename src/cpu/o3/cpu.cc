@@ -69,9 +69,23 @@ struct BaseCPUParams;
 namespace o3
 {
 
+namespace
+{
+
+constexpr uint32_t RiscvWarmupTriggerInst = 0x07F00013u;
+
+bool
+isRiscvWarmupTriggerInst(const DynInstPtr &inst)
+{
+    const auto &static_inst = inst->staticInst;
+    return static_cast<uint32_t>(static_inst->getEMI()) ==
+        RiscvWarmupTriggerInst;
+}
+
+} // anonymous namespace
+
 CPU::CPU(const BaseO3CPUParams &params)
     : BaseCPU(params),
-      warmupInst(params.warmupInst),
       mmu(params.mmu),
       tickEvent([this]{ tick(); }, "O3CPU tick",
                 false, Event::CPU_Tick_Pri),
@@ -120,6 +134,11 @@ CPU::CPU(const BaseO3CPUParams &params)
       lastRunningCycle(curCycle()),
       cpuStats(this)
 {
+    warmupInst = params.warmupInst;
+
+    fatal_if(params.isa[0]->getIsaName() != "riscv",
+            "O3 warmup magic trigger only supports the RISC-V ISA.");
+
     fatal_if(FullSystem && params.numThreads > 1,
             "SMT is not supported in O3 in full system mode currently.");
 
@@ -1167,11 +1186,26 @@ CPU::instDone(ThreadID tid, const DynInstPtr &inst)
 
         // Check for instruction-count-based events.
         thread[tid]->comInstEventQueue.serviceEvents(thread[tid]->numInst);
-        if (warmupInst > 0 && !warmup)
-        {
-            if (thread[tid]->numInst >= warmupInst)
-            {
+        if (!riscvWarmupTriggerSeen && isRiscvWarmupTriggerInst(inst)) {
+            riscvWarmupTriggerSeen = true;
+            riscvWarmupStartInst = thread[tid]->numInst;
+
+            printf(
+                    "RISC-V warmup trigger committed, "
+                    "Resetting stats and starting warmup window.\n");
+        }
+
+        if (riscvWarmupTriggerSeen && warmupInst > 0 && !warmup) {
+            const Counter instsSinceTrigger =
+                thread[tid]->numInst - riscvWarmupStartInst;
+            if (instsSinceTrigger >= warmupInst) {
                 warmup = true;
+
+                printf(
+                        "RISC-V warmup reached %llu committed "
+                        "instructions after trigger. Resetting stats.\n",
+                        static_cast<unsigned long long>(warmupInst));
+
                 statistics::schedStatEvent(false, true);
             }
         }
