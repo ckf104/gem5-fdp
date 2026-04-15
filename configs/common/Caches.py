@@ -86,8 +86,8 @@ class L1_DCache(L1Cache):
 
 
 class L1_BOOM_DCache(L1_DCache):
-    size = "16KiB"
-    assoc = 4
+    size = "32KiB"
+    assoc = 8
     # BOOM 的 dcache 延迟为 2 个周期
     tag_latency = 2
     data_latency = 2
