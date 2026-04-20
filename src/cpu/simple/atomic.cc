@@ -766,6 +766,17 @@ AtomicSimpleCPU::tick()
                     if (!readCkptSetting || (readCkptSetting && isBenchInst)) {
                         uint64_t length = 0;
                         if (isCkptStart(numInst, length)) {
+                            const Addr ckpt_pc =
+                                thread->pcState().instAddr();
+                            // Capture the real next PC for replay entry.
+                            // Using pc + inst_size is incorrect for taken
+                            // branches and causes create/replay divergence.
+                            auto next_pc =
+                                std::unique_ptr<PCStateBase>(
+                                    thread->pcState().clone());
+                            curStaticInst->advancePC(*next_pc);
+                            const Addr ckpt_npc = next_pc->instAddr();
+
                             uint64_t intregs[32], fpregs[32];
                             for (int i = 0; i < 32; i++) {
                                 intregs[i] =
@@ -774,9 +785,8 @@ AtomicSimpleCPU::tick()
                                     thread->getReg(RiscvISA::floatRegClass[i]);
                             }
                             addCkpt(numInst, length, intregs, fpregs,
-                                    thread->pcState().instAddr(),
-                                    thread->pcState().instAddr() +
-                                        curStaticInst->size(),
+                                    ckpt_pc,
+                                    ckpt_npc,
                                     instnums);
                         }
                     }
